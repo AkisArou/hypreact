@@ -31,8 +31,8 @@
    - parse them with `libcss`
    - convert into `hypreact` stylesheet domain types
    - match selectors and compute cascaded styles
-   - parser source vendored in `third_party/libcss`
-   - current build still depends on `libparserutils` and `libwapcaplet`
+   - parser is provided by the system `libcss` package
+   - `libparserutils` and `libwapcaplet` are required system dependencies
 
 6. `Yoga bridge`
    - create Yoga nodes for structural layout nodes

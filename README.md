@@ -27,7 +27,7 @@ The project keeps the `spiders-wm` structural layout model while targeting Hyprl
 - `src/` - plugin entrypoint, layout engine, runtime integration, CSS/style system
 - `sdk/` - authoring SDK for TSX layouts and CSS module typing
 - `docs/` - architecture, CSS spec, runtime model, and implementation plan
-- `third_party/` - pinned upstream sources for `QuickJS`, `Yoga`, and `libcss`
+- `third_party/` - pinned upstream sources for `QuickJS` and `Yoga`
 
 ## Dependencies
 
@@ -35,7 +35,6 @@ Core embedded dependencies are vendored as git submodules:
 
 - `third_party/quickjs`
 - `third_party/yoga`
-- `third_party/libcss`
 
 Clone with:
 
@@ -51,24 +50,35 @@ git submodule update --init --recursive
 
 These are intentionally pinned for reproducible plugin builds.
 
+System CSS dependencies:
+
+- `libcss`
+- `libparserutils`
+- `libwapcaplet`
+
 ## Build Notes
 
 - `QuickJS` is compiled from vendored source in `third_party/quickjs`.
 - `Yoga` is compiled from vendored source in `third_party/yoga`.
-- `libcss` is vendored, but upstream `libcss` still depends on system `libparserutils` and `libwapcaplet`.
+- `libcss` is resolved from the system via `pkg-config`, along with `libparserutils` and `libwapcaplet`.
 
 Current CMake behavior:
 
-- if `libparserutils` and `libwapcaplet` are present via `pkg-config`, a real `libcss` bridge target is enabled
-- otherwise a stub bridge is built so the repository can still configure while style-parser integration is unfinished
+- `pkg-config`, `libcss`, `libparserutils`, and `libwapcaplet` are required at configure time
 - `QuickJS` and `Yoga` build from vendored source successfully under CMake
 - the final plugin target still depends on Hyprland's native header/runtime stack, including transitive dependencies such as `pixman`
 
-To require the `libcss` dependency chain during configure:
+Example distro package notes:
 
 ```sh
-cmake -B build -DHYPREACT_REQUIRE_LIBCSS_DEPS=ON
+# Arch
+sudo pacman -S libcss libparserutils libwapcaplet pkgconf
+
+# Fedora
+sudo dnf install libcss-devel libparserutils-devel libwapcaplet-devel pkgconf-pkg-config
 ```
+
+Other ecosystems such as Nixpkgs, openSUSE, Gentoo, Void, and FreeBSD Ports also package `libcss`.
 
 ## Config Conventions
 
