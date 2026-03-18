@@ -195,6 +195,72 @@ if(BUILD_TESTING)
     hypreact_style
     hypreact_libcss_bridge
   )
+
+  add_executable(hypreact_selector_match_repro
+    tests/selector_match_repro.cpp
+  )
+
+  target_include_directories(hypreact_selector_match_repro PRIVATE src)
+  target_compile_options(hypreact_selector_match_repro PRIVATE ${HYPREACT_WARNING_FLAGS})
+  target_link_libraries(hypreact_selector_match_repro PRIVATE
+    hypreact_style
+    hypreact_libcss_bridge
+  )
+  target_sources(hypreact_selector_match_repro PRIVATE src/domain/layout_node.cpp)
+
+  add_executable(hypreact_selector_callback_repro
+    tests/selector_callback_repro.cpp
+  )
+
+  target_include_directories(hypreact_selector_callback_repro PRIVATE src)
+  target_compile_options(hypreact_selector_callback_repro PRIVATE ${HYPREACT_WARNING_FLAGS})
+  target_link_libraries(hypreact_selector_callback_repro PRIVATE
+    hypreact_style
+    hypreact_libcss_bridge
+  )
+  target_sources(hypreact_selector_callback_repro PRIVATE src/domain/layout_node.cpp)
+
+  add_executable(hypreact_libcss_c_repro
+    tests/libcss_c_repro.c
+  )
+
+  target_compile_options(hypreact_libcss_c_repro PRIVATE ${HYPREACT_WARNING_FLAGS})
+  target_include_directories(hypreact_libcss_c_repro PRIVATE
+    ${LIBCSS_INCLUDE_DIRS}
+    ${LIBWAPCAPLET_INCLUDE_DIRS}
+    ${LIBPARSERUTILS_INCLUDE_DIRS}
+  )
+  target_link_directories(hypreact_libcss_c_repro PRIVATE
+    ${LIBCSS_LIBRARY_DIRS}
+    ${LIBWAPCAPLET_LIBRARY_DIRS}
+    ${LIBPARSERUTILS_LIBRARY_DIRS}
+  )
+  target_link_libraries(hypreact_libcss_c_repro PRIVATE
+    ${LIBCSS_LIBRARIES}
+    ${LIBWAPCAPLET_LIBRARIES}
+    ${LIBPARSERUTILS_LIBRARIES}
+  )
+
+  add_executable(hypreact_libcss_c_adapter_repro
+    tests/libcss_c_adapter_repro.c
+  )
+
+  target_compile_options(hypreact_libcss_c_adapter_repro PRIVATE ${HYPREACT_WARNING_FLAGS})
+  target_include_directories(hypreact_libcss_c_adapter_repro PRIVATE
+    ${LIBCSS_INCLUDE_DIRS}
+    ${LIBWAPCAPLET_INCLUDE_DIRS}
+    ${LIBPARSERUTILS_INCLUDE_DIRS}
+  )
+  target_link_directories(hypreact_libcss_c_adapter_repro PRIVATE
+    ${LIBCSS_LIBRARY_DIRS}
+    ${LIBWAPCAPLET_LIBRARY_DIRS}
+    ${LIBPARSERUTILS_LIBRARY_DIRS}
+  )
+  target_link_libraries(hypreact_libcss_c_adapter_repro PRIVATE
+    ${LIBCSS_LIBRARIES}
+    ${LIBWAPCAPLET_LIBRARIES}
+    ${LIBPARSERUTILS_LIBRARIES}
+  )
 endif()
 
 set_target_properties(hypreact PROPERTIES

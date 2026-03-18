@@ -31,6 +31,20 @@ The probe-side node adapter is now split into a reusable libcss selector adapter
 
 There is now also a small production-facing selector utility around that adapter for direct selector-match checks against `StyleNodeContext`, including a structured diagnostic result used in tests while the full production selection path is still in transition.
 
+That direct selector-match helper is still best treated as a targeted diagnostic utility rather than the primary production confidence signal; repeated-call and combinator robustness are currently better covered by the probe path plus production mismatch recording.
+
+Production `computeStyle(...)` currently remains fallback-matcher-owned for stability. Libcss-backed selector checks are still used in the bridge/probe/diagnostic path while the direct selector-match helper is being hardened.
+
+Production-side mismatch recording remains a design goal, but it is currently gated on making the direct libcss selector helper robust enough for repeated in-process use.
+
+Today that production libcss subset is intentionally narrower than the fallback selector surface: selectors are only routed through libcss when their current pseudostates can be serialized into supported CSS semantics such as `:focus` and `:target`. Remaining hypreact-specific pseudostates like `:floating`, `:fullscreen`, `:focused-within`, `:urgent`, and `:special-workspace` stay fallback-only until there is an explicit production-side libcss representation for them.
+
+The current libcss adapter can still serialize type/id/class compounds, exact-match window attributes, child and descendant combinators, and the lowered pseudostates `:focused -> :focus` and `:visible -> :target`, but those checks remain diagnostic/probe-side until the direct selector-match helper is stable enough to use in production style resolution.
+
+The direct selector-match helper now uses an overlap-property sentinel instead of `display: none` to decide whether a synthetic selector rule actually applied, which makes adapter diagnostics less dependent on one specific property side effect while the helper itself is being debugged.
+
+`libcss` does not currently expose `:focus-within` support through the selector engine surface available here, so `hypreact` keeps `:focused-within` on the fallback matcher for now instead of pretending it is libcss-backed.
+
 Plugin-side selector diagnostic notifications can now be gated with `plugin:hypreact:debug_selector_diagnostics = 1`.
 
 Plugin-side selector dumps comparing selector-match state and probe output can be enabled with `plugin:hypreact:debug_selector_dump = 1`.
@@ -46,6 +60,8 @@ The test suite now validates key JSON dump fields, arrays, nested fallback field
 There is also a small `hypreact_debug_dump_preview` test utility target that emits one formatted dump record for quick manual inspection.
 
 The probe overlap surface now also includes `max-width`, `min-height`, `left`, `top`, `height`, `max-height`, `right`, and `bottom` for fixture-driven comparisons where the current adapter can resolve them.
+
+The probe/debug dump now distinguishes `probeSelected` (libcss returned computed results) from `probeAuthoredMatch` (the authored stylesheet changed the overlap subset compared to an empty baseline stylesheet), which is the signal the plugin should use when talking about real authored CSS matches.
 
 Currently implemented pseudoclasses are `:focused`, `:focused-within`, `:fullscreen`, `:floating`, `:urgent`, and `:special-workspace` where the runtime style context carries the needed state.
 - shorthand expansion beyond `margin`, `padding`, and `border-width`

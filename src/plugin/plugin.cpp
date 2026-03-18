@@ -365,7 +365,8 @@ PluginDescription Plugin::init(HANDLE handle) {
 
             if (Plugin::instance().debugSelectorDump_) {
                 const auto probe = hypreact::style::probeLibcssSelection(cssBuffer.str(), debugSelectorContext);
-                const auto fallbackStyle = hypreact::style::computeStyle(parsedStylesheet.stylesheet, debugSelectorContext);
+                hypreact::style::ComputeStyleDiagnostics styleDiagnostics;
+                const auto fallbackStyle = hypreact::style::computeStyle(parsedStylesheet.stylesheet, debugSelectorContext, &styleDiagnostics);
                 const std::string authoredStatus = !probe.parsed ? "probe-parse-failed"
                     : !probe.selected ? "probe-select-failed"
                     : probe.authoredMatch ? "authored-match"
@@ -398,6 +399,18 @@ PluginDescription Plugin::init(HANDLE handle) {
                         handle,
                         "[hypreact] selector probe diagnostic: " + probe.diagnostics.front(),
                         CHyprColor {1.0, 0.7, 0.2, 1.0},
+                        3000
+                    );
+                }
+
+                if (!styleDiagnostics.selectorMismatches.empty()) {
+                    const auto& mismatch = styleDiagnostics.selectorMismatches.front();
+                    HyprlandAPI::addNotification(
+                        handle,
+                        "[hypreact] selector mismatch: selector='" + mismatch.selector + "' fallback="
+                            + (mismatch.fallbackMatched ? "true" : "false")
+                            + " libcss=" + (mismatch.libcssMatched ? "true" : "false"),
+                        CHyprColor {1.0, 0.5, 0.2, 1.0},
                         3000
                     );
                 }

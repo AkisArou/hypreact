@@ -2,8 +2,11 @@
 
 #include <algorithm>
 #include <charconv>
+#include <sstream>
 #include <string_view>
 #include <tuple>
+
+#include "libcss_selector_adapter.hpp"
 
 namespace hypreact::style {
 
@@ -24,6 +27,91 @@ std::string_view windowAttributeValue(const domain::WindowSnapshot& window, Wind
     }
 
     return {};
+}
+
+std::optional<std::string> pseudoClassName(PseudoClass pseudoclass) {
+    switch (pseudoclass) {
+        case PseudoClass::Focused: return std::string("focus");
+        case PseudoClass::Visible: return std::string("target");
+        case PseudoClass::FocusedWithin:
+        case PseudoClass::Fullscreen:
+        case PseudoClass::Floating:
+        case PseudoClass::Urgent:
+        case PseudoClass::SpecialWorkspace:
+            return std::nullopt;
+    }
+
+    return std::nullopt;
+}
+
+std::string attributeName(WindowAttribute attribute) {
+    switch (attribute) {
+        case WindowAttribute::AppId: return "app-id";
+        case WindowAttribute::Class: return "class";
+        case WindowAttribute::Title: return "title";
+        case WindowAttribute::Floating: return "floating";
+        case WindowAttribute::Fullscreen: return "fullscreen";
+    }
+
+    return {};
+}
+
+std::optional<std::string> serializeSimpleSelector(const SimpleSelector& selector) {
+    std::string result;
+    if (selector.universal && !selector.type.has_value()) {
+        result += "*";
+    } else if (selector.type.has_value()) {
+        result += *selector.type;
+    }
+
+    if (selector.id.has_value()) {
+        result += "#" + *selector.id;
+    }
+
+    for (const auto& className : selector.classes) {
+        result += "." + className;
+    }
+
+    for (const auto& attribute : selector.attributes) {
+        result += "[" + attributeName(attribute.attribute) + "=\"" + attribute.value + "\"]";
+    }
+
+    for (const auto pseudoclass : selector.pseudoclasses) {
+        const auto serialized = pseudoClassName(pseudoclass);
+        if (!serialized.has_value()) {
+            return std::nullopt;
+        }
+        result += ":" + *serialized;
+    }
+
+    return result;
+}
+
+bool shouldUseLibcssSelector(const Selector& selector) {
+    const auto hasRepresentableSimpleSelector = [](const SimpleSelector& simple) {
+        return simple.universal || simple.type.has_value() || simple.id.has_value() || !simple.classes.empty()
+            || !simple.attributes.empty() || !simple.pseudoclasses.empty();
+    };
+
+    if (!hasRepresentableSimpleSelector(selector.target)) {
+        return false;
+    }
+
+    if (selector.directParent.has_value() && !hasRepresentableSimpleSelector(*selector.directParent)) {
+        return false;
+    }
+
+    if (selector.ancestor.has_value() && !hasRepresentableSimpleSelector(*selector.ancestor)) {
+        return false;
+    }
+
+    return true;
+}
+
+bool productionMatchesSelector(const Selector& selector, const StyleNodeContext& node, ComputeStyleDiagnostics* diagnostics) {
+    const bool fallbackMatched = matchesSelector(selector, node);
+    (void)diagnostics;
+    return fallbackMatched;
 }
 
 } // namespace
@@ -187,6 +275,34 @@ bool matchesSelector(const Selector& selector, const domain::LayoutNode& node) {
     return matchesSelector(selector, context);
 }
 
+std::optional<std::string> serializeSelectorForLibcss(const Selector& selector) {
+    if (!shouldUseLibcssSelector(selector)) {
+        return std::nullopt;
+    }
+
+    std::ostringstream output;
+    if (selector.ancestor.has_value()) {
+        const auto ancestor = serializeSimpleSelector(*selector.ancestor);
+        if (!ancestor.has_value()) {
+            return std::nullopt;
+        }
+        output << *ancestor << " ";
+    }
+    if (selector.directParent.has_value()) {
+        const auto parent = serializeSimpleSelector(*selector.directParent);
+        if (!parent.has_value()) {
+            return std::nullopt;
+        }
+        output << *parent << " > ";
+    }
+    const auto target = serializeSimpleSelector(selector.target);
+    if (!target.has_value()) {
+        return std::nullopt;
+    }
+    output << *target;
+    return output.str();
+}
+
 int selectorSpecificity(const SimpleSelector& selector) {
     const int idScore = selector.id.has_value() ? 100 : 0;
     const int classScore = static_cast<int>(selector.classes.size() + selector.attributes.size() + selector.pseudoclasses.size()) * 10;
@@ -206,12 +322,16 @@ int selectorSpecificity(const Selector& selector) {
 }
 
 ComputedStyle computeStyle(const Stylesheet& stylesheet, const StyleNodeContext& node) {
+    return computeStyle(stylesheet, node, nullptr);
+}
+
+ComputedStyle computeStyle(const Stylesheet& stylesheet, const StyleNodeContext& node, ComputeStyleDiagnostics* diagnostics) {
     ComputedStyle style;
 
     std::vector<std::tuple<int, std::size_t, const Declaration*>> matchedDeclarations;
 
     for (const auto& rule : stylesheet.rules) {
-        if (!matchesSelector(rule.selector, node)) {
+        if (!productionMatchesSelector(rule.selector, node, diagnostics)) {
             continue;
         }
 

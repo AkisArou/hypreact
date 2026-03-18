@@ -16,6 +16,7 @@ namespace hypreact::style {
 
 struct LibcssAdapterNode {
     const StyleNodeContext* context = nullptr;
+    lwc_string* typeName = nullptr;
 };
 
 struct LibcssSelectorMatchResult {

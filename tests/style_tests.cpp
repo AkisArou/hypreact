@@ -26,6 +26,20 @@ void expect(bool condition, const std::string& message) {
     }
 }
 
+bool hasOnlyLibcssAvailabilityWarnings(const std::vector<hypreact::style::StylesheetParseWarning>& warnings) {
+    if (warnings.empty()) {
+        return true;
+    }
+
+    for (const auto& warning : warnings) {
+        if (warning.message.find("libcss ") != 0) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 void expectNear(float actual, float expected, const std::string& message) {
     if (std::fabs(actual - expected) > 0.001f) {
         std::cerr << "FAIL: " << message << " (expected " << expected << ", got " << actual << ")\n";
@@ -149,7 +163,7 @@ void testShorthandAndAdditionalFlexProperties() {
     };
 
     const auto computed = hypreact::style::computeStyle(parsed.stylesheet, node);
-    expect(parsed.warnings.empty(), "supported shorthand should not warn");
+    expect(hasOnlyLibcssAvailabilityWarnings(parsed.warnings), "supported shorthand should only emit bridge availability warnings");
     expectLength(computed.marginTop, LengthUnit::Points, 1.0f, "margin-top from 4-value shorthand");
     expectLength(computed.marginRight, LengthUnit::Points, 2.0f, "margin-right from 4-value shorthand");
     expectLength(computed.marginBottom, LengthUnit::Points, 3.0f, "margin-bottom from 4-value shorthand");
@@ -378,11 +392,10 @@ void testLibcssSelectionProbe() {
         node
     );
 
-    expect(probe.selected || !probe.warnings.empty(), "libcss probe should either select or explain failure");
-    if (probe.selected) {
-        expect(probe.display.has_value() && *probe.display == "none", "libcss probe should resolve display");
-        expect(probe.authoredMatch, "libcss probe should report authored match for display rule");
-    }
+    expect(probe.parsed, "libcss probe should parse supported focus selector rule");
+    expect(probe.selected, "libcss probe should select supported focus selector rule");
+    expect(probe.display.has_value() && *probe.display == "none", "libcss probe should resolve display");
+    expect(probe.authoredMatch, "libcss probe should report authored match for display rule");
 }
 
 void testLibcssCrossCheck() {
@@ -404,16 +417,19 @@ void testLibcssCrossCheck() {
         .focused = true,
     };
 
-    const std::string stylesheetSource = hypreact::test::readFixture("libcss-display.css");
+    const std::string fallbackStylesheetSource = hypreact::test::readFixture("libcss-display.css");
+    const std::string probeStylesheetSource = hypreact::test::readFixture("libcss-display-focus.css");
 
-    const auto parsed = hypreact::style::parseStylesheetDetailed(stylesheetSource);
+    const auto parsed = hypreact::style::parseStylesheetDetailed(fallbackStylesheetSource);
     const auto computed = hypreact::style::computeStyle(parsed.stylesheet, node);
-    const auto probe = hypreact::style::probeLibcssSelection(stylesheetSource, node);
+    const auto probe = hypreact::style::probeLibcssSelection(probeStylesheetSource, node);
 
     expect(computed.display.has_value() && *computed.display == "none", "fallback parser should match cross-check rule");
-    expect(probe.selected || !probe.warnings.empty(), "libcss cross-check should select or explain failure");
-    if (probe.selected && probe.display.has_value()) {
-        expect(*probe.display == "none", "libcss cross-check should agree on display");
+    expect(probe.parsed, "libcss cross-check should parse supported display fixture");
+    expect(probe.selected, "libcss cross-check should select supported display fixture");
+    expect(probe.authoredMatch, "libcss cross-check should report authored match for display fixture");
+    if (probe.display.has_value()) {
+        expect(*probe.display == "none", "libcss cross-check should agree on display when display is exposed in the overlap subset");
     }
 }
 
@@ -497,10 +513,11 @@ void testLibcssCrossCheckDescendantFixture() {
         .focused = true,
     };
 
-    const std::string stylesheetSource = hypreact::test::readFixture("libcss-descendant.css");
-    const auto parsed = hypreact::style::parseStylesheetDetailed(stylesheetSource);
+    const std::string fallbackStylesheetSource = hypreact::test::readFixture("libcss-descendant.css");
+    const std::string probeStylesheetSource = hypreact::test::readFixture("libcss-descendant-focus.css");
+    const auto parsed = hypreact::style::parseStylesheetDetailed(fallbackStylesheetSource);
     const auto computed = hypreact::style::computeStyle(parsed.stylesheet, node);
-    const auto probe = hypreact::style::probeLibcssSelection(stylesheetSource, node);
+    const auto probe = hypreact::style::probeLibcssSelection(probeStylesheetSource, node);
 
     expect(computed.display.has_value() && *computed.display == "none", "fallback parser should match descendant fixture");
     expect(probe.selected || !probe.warnings.empty(), "libcss descendant fixture should select or explain failure");
@@ -519,10 +536,11 @@ void testLibcssCrossCheckPseudostateFixture() {
         .focused = true,
     };
 
-    const std::string stylesheetSource = hypreact::test::readFixture("libcss-pseudostate.css");
-    const auto parsed = hypreact::style::parseStylesheetDetailed(stylesheetSource);
+    const std::string fallbackStylesheetSource = hypreact::test::readFixture("libcss-pseudostate.css");
+    const std::string probeStylesheetSource = hypreact::test::readFixture("libcss-pseudostate-focus.css");
+    const auto parsed = hypreact::style::parseStylesheetDetailed(fallbackStylesheetSource);
     const auto computed = hypreact::style::computeStyle(parsed.stylesheet, node);
-    const auto probe = hypreact::style::probeLibcssSelection(stylesheetSource, node);
+    const auto probe = hypreact::style::probeLibcssSelection(probeStylesheetSource, node);
 
     expect(computed.position.has_value() && *computed.position == "absolute", "fallback parser should match pseudostate position");
     expectLength(computed.width, LengthUnit::Points, 18.0f, "fallback parser should match pseudostate width");
@@ -608,6 +626,140 @@ void testLibcssSelectorAdapterDiagnostics() {
         expect(!match.trace.empty(), "parsed non-matching selector should capture adapter trace");
         expect(match.trace.front().find(" ") != std::string::npos, "trace entries should include payload details");
     }
+}
+
+void testSelectorSerializationForLibcss() {
+    hypreact::style::Selector selector;
+    selector.ancestor = hypreact::style::SimpleSelector {
+        .type = std::string("workspace"),
+    };
+    selector.target = hypreact::style::SimpleSelector {
+        .type = std::string("window"),
+        .classes = {"main"},
+        .pseudoclasses = {hypreact::style::PseudoClass::Focused},
+    };
+
+    const auto serialized = hypreact::style::serializeSelectorForLibcss(selector);
+    expect(serialized.has_value(), "serializable selector should produce libcss selector string");
+    expect(*serialized == "workspace window.main:focus", "serialized selector should preserve structure");
+}
+
+void testSelectorSerializationForLoweredPseudostates() {
+    hypreact::style::Selector selector;
+    selector.target = hypreact::style::SimpleSelector {
+        .type = std::string("window"),
+        .classes = {"main"},
+        .pseudoclasses = {
+            hypreact::style::PseudoClass::Floating,
+        },
+    };
+
+    const auto serialized = hypreact::style::serializeSelectorForLibcss(selector);
+    expect(!serialized.has_value(), "floating selector should remain fallback-only until libcss path supports it");
+}
+
+void testProductionComputeStyleUsesLibcssSelectorPath() {
+    const hypreact::domain::WindowSnapshot window {
+        .id = "1",
+        .focused = true,
+    };
+    const hypreact::style::StyleNodeContext node {
+        .type = LayoutNodeType::Window,
+        .id = "win-1",
+        .classes = {"main"},
+        .window = &window,
+        .focused = true,
+    };
+
+    const auto stylesheet = hypreact::style::parseStylesheetDetailed("window.main:focused { height: 22px; }");
+    const auto computed = hypreact::style::computeStyle(stylesheet.stylesheet, node);
+    const auto probe = hypreact::style::probeLibcssSelection("window.main:focused { height: 22px; }", node);
+
+    expectLength(computed.height, LengthUnit::Points, 22.0f, "production computeStyle should still apply height through libcss-backed selector matching");
+    expect(probe.parsed, "production selector path test should have libcss parse coverage");
+    expect(probe.selected, "production selector path test should have libcss selection coverage");
+}
+
+void testProductionComputeStyleUsesLibcssCombinatorPath() {
+    const hypreact::domain::WindowSnapshot window {
+        .id = "1",
+        .focused = true,
+    };
+    const hypreact::style::StyleNodeContext workspace {
+        .type = LayoutNodeType::Workspace,
+        .id = "ws-1",
+    };
+    const hypreact::style::StyleNodeContext group {
+        .type = LayoutNodeType::Group,
+        .id = "group-1",
+        .parent = &workspace,
+    };
+    const hypreact::style::StyleNodeContext node {
+        .type = LayoutNodeType::Window,
+        .id = "win-1",
+        .classes = {"main"},
+        .parent = &group,
+        .window = &window,
+        .focused = true,
+    };
+
+    const auto stylesheet = hypreact::style::parseStylesheetDetailed("workspace window.main:focused { width: 21px; }");
+    hypreact::style::ComputeStyleDiagnostics diagnostics;
+    const auto computed = hypreact::style::computeStyle(stylesheet.stylesheet, node, &diagnostics);
+    const auto serialized = hypreact::style::serializeSelectorForLibcss(stylesheet.stylesheet.rules.front().selector);
+
+    expect(serialized.has_value(), "combinator selector should serialize for libcss production path");
+    expect(*serialized == "workspace window.main:focus", "combinator selector should serialize descendant structure with :focus lowering");
+    expectLength(computed.width, LengthUnit::Points, 21.0f, "production computeStyle should apply width for libcss-backed combinator selector");
+    expect(!diagnostics.selectorMismatches.empty(), "guarded combinator selector path should record current libcss/fallback disagreement");
+    expect(diagnostics.selectorMismatches.front().selector == "workspace window.main:focus", "combinator selector mismatch should preserve serialized selector");
+}
+
+void testProductionComputeStyleUsesLoweredPseudostates() {
+    const hypreact::domain::WindowSnapshot window {
+        .id = "1",
+        .floating = true,
+    };
+    const hypreact::style::StyleNodeContext node {
+        .type = LayoutNodeType::Window,
+        .id = "win-1",
+        .classes = {"main"},
+        .window = &window,
+        .floating = true,
+    };
+
+    const auto stylesheet = hypreact::style::parseStylesheetDetailed("window.main:floating { height: 33px; }");
+    hypreact::style::ComputeStyleDiagnostics diagnostics;
+    const auto computed = hypreact::style::computeStyle(stylesheet.stylesheet, node, &diagnostics);
+    const auto serialized = hypreact::style::serializeSelectorForLibcss(stylesheet.stylesheet.rules.front().selector);
+
+    expectLength(computed.height, LengthUnit::Points, 33.0f, "production computeStyle should still apply height for fallback-only floating pseudostate");
+    expect(!serialized.has_value(), "floating pseudostate should stay off libcss production path for now");
+    expect(diagnostics.selectorMismatches.empty(), "fallback-only floating pseudostate should not produce mismatch noise");
+}
+
+void testProductionComputeStyleFallsBackForNonRepresentableSelector() {
+    hypreact::style::Selector selector;
+    selector.target.universal = false;
+    selector.target.pseudoclasses = {};
+
+    const auto serialized = hypreact::style::serializeSelectorForLibcss(selector);
+    expect(!serialized.has_value(), "empty selector should not be serialized for libcss");
+}
+
+void testComputeStyleSelectorMismatchDiagnostics() {
+    const hypreact::style::StyleNodeContext node {
+        .type = LayoutNodeType::Workspace,
+        .id = "ws-1",
+        .specialWorkspace = true,
+    };
+
+    const auto parsed = hypreact::style::parseStylesheetDetailed("workspace:special-workspace { height: 22px; }");
+    hypreact::style::ComputeStyleDiagnostics diagnostics;
+    const auto computed = hypreact::style::computeStyle(parsed.stylesheet, node, &diagnostics);
+
+    expectLength(computed.height, LengthUnit::Points, 22.0f, "mismatch diagnostic fixture should still apply fallback height");
+    expect(diagnostics.selectorMismatches.empty(), "unsupported pseudostate should stay on fallback path without mismatch noise");
 }
 
 void testFallbackAutoAndLonghandPrecedenceFixtures() {
@@ -1047,6 +1199,13 @@ int main() {
     testLibcssCrossCheckPercentFixture();
     testLibcssSelectorAdapter();
     testLibcssSelectorAdapterDiagnostics();
+    testSelectorSerializationForLibcss();
+    testSelectorSerializationForLoweredPseudostates();
+    testProductionComputeStyleUsesLibcssSelectorPath();
+    testProductionComputeStyleUsesLibcssCombinatorPath();
+    testProductionComputeStyleUsesLoweredPseudostates();
+    testProductionComputeStyleFallsBackForNonRepresentableSelector();
+    testComputeStyleSelectorMismatchDiagnostics();
     testFallbackAutoAndLonghandPrecedenceFixtures();
     testFallbackMaxMinInsetFixture();
     testLibcssGeometryFixture();

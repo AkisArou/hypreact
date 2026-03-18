@@ -17,7 +17,24 @@ namespace hypreact::style {
 
 namespace {
 
-bool libcssSyntaxAccepts(const std::string& source) {
+css_error resolveUrl(void* pw, const char* base, lwc_string* rel, lwc_string** abs) {
+    (void)pw;
+    (void)base;
+    if (rel == nullptr || abs == nullptr) {
+        return CSS_BADPARM;
+    }
+
+    *abs = lwc_string_ref(rel);
+    return CSS_OK;
+}
+
+struct LibcssSyntaxCheck {
+    bool accepted = false;
+    std::string diagnostic;
+};
+
+LibcssSyntaxCheck libcssSyntaxAccepts(const std::string& source) {
+    LibcssSyntaxCheck check;
     css_stylesheet* sheet = nullptr;
     const css_stylesheet_params params {
         .params_version = CSS_STYLESHEET_PARAMS_VERSION_1,
@@ -27,7 +44,7 @@ bool libcssSyntaxAccepts(const std::string& source) {
         .title = "hypreact",
         .allow_quirks = false,
         .inline_style = false,
-        .resolve = nullptr,
+        .resolve = resolveUrl,
         .resolve_pw = nullptr,
         .import = nullptr,
         .import_pw = nullptr,
@@ -37,14 +54,24 @@ bool libcssSyntaxAccepts(const std::string& source) {
         .font_pw = nullptr,
     };
 
-    if (css_stylesheet_create(&params, &sheet) != CSS_OK || sheet == nullptr) {
-        return false;
+    const auto create = css_stylesheet_create(&params, &sheet);
+    if (create != CSS_OK || sheet == nullptr) {
+        check.diagnostic = "libcss stylesheet create failed: " + std::string(css_error_to_string(create))
+            + " (" + std::to_string(static_cast<int>(create)) + ")";
+        return check;
     }
 
     const auto append = css_stylesheet_append_data(sheet, reinterpret_cast<const uint8_t*>(source.data()), source.size());
-    const auto done = append == CSS_OK ? css_stylesheet_data_done(sheet) : append;
+    const bool appendAccepted = append == CSS_OK || append == CSS_NEEDDATA;
+    const auto done = appendAccepted ? css_stylesheet_data_done(sheet) : append;
     css_stylesheet_destroy(sheet);
-    return append == CSS_OK && done == CSS_OK;
+    check.accepted = appendAccepted && done == CSS_OK;
+    if (!check.accepted) {
+        check.diagnostic = "libcss stylesheet parse failed: append=" + std::string(css_error_to_string(append))
+            + " (" + std::to_string(static_cast<int>(append)) + ") done="
+            + std::string(css_error_to_string(done)) + " (" + std::to_string(static_cast<int>(done)) + ")";
+    }
+    return check;
 }
 
 std::string trimCopy(std::string_view text) {
@@ -449,7 +476,7 @@ Stylesheet parseStylesheet(const std::string& source) {
 StylesheetParseResult parseStylesheetDetailed(const std::string& source) {
     StylesheetParseResult result;
     const std::string cleanedSource = stripComments(source);
-    const bool libcssAccepted = libcssSyntaxAccepts(source);
+    const auto libcssCheck = libcssSyntaxAccepts(source);
 
     std::size_t cursor = 0;
     while (cursor < cleanedSource.size()) {
@@ -488,7 +515,11 @@ StylesheetParseResult parseStylesheetDetailed(const std::string& source) {
         cursor = closeBrace + 1;
     }
 
-    if (!libcssAccepted && result.stylesheet.rules.empty() && result.warnings.empty()) {
+    if (!libcssCheck.accepted) {
+        result.warnings.push_back({libcssCheck.diagnostic + "; fallback parser result may diverge from runtime libcss behavior"});
+    }
+
+    if (!libcssCheck.accepted && result.stylesheet.rules.empty() && result.warnings.size() == 1) {
         result.warnings.push_back({"libcss reported syntax issues; fallback parser produced no supported rules"});
     }
 

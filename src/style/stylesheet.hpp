@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "domain/layout_node.hpp"
@@ -164,6 +165,18 @@ struct ComputedStyle {
     std::optional<LengthValue> paddingLeft;
 };
 
+struct SelectorMismatchDiagnostic {
+    std::string selector;
+    bool fallbackMatched = false;
+    bool libcssParsed = false;
+    bool libcssMatched = false;
+    std::vector<std::string> libcssDiagnostics;
+};
+
+struct ComputeStyleDiagnostics {
+    std::vector<SelectorMismatchDiagnostic> selectorMismatches;
+};
+
 struct StyleNodeContext {
     domain::LayoutNodeType type;
     std::string id;
@@ -185,7 +198,9 @@ int selectorSpecificity(const Selector& selector);
 bool matchesSimpleSelector(const SimpleSelector& selector, const StyleNodeContext& node);
 bool matchesSelector(const Selector& selector, const StyleNodeContext& node);
 bool matchesSelector(const Selector& selector, const domain::LayoutNode& node);
+std::optional<std::string> serializeSelectorForLibcss(const Selector& selector);
 ComputedStyle computeStyle(const Stylesheet& stylesheet, const StyleNodeContext& node);
+ComputedStyle computeStyle(const Stylesheet& stylesheet, const StyleNodeContext& node, ComputeStyleDiagnostics* diagnostics);
 ComputedStyle computeStyle(const Stylesheet& stylesheet, const domain::LayoutNode& node);
 std::optional<float> parseNumber(const std::string& value);
 std::optional<LengthValue> parseLengthValue(const std::string& value);

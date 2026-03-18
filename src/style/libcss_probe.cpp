@@ -18,6 +18,21 @@ namespace hypreact::style {
 
 namespace {
 
+css_error resolveUrl(void* pw, const char* base, lwc_string* rel, lwc_string** abs) {
+    (void)pw;
+    (void)base;
+    if (rel == nullptr || abs == nullptr) {
+        return CSS_BADPARM;
+    }
+
+    *abs = lwc_string_ref(rel);
+    return CSS_OK;
+}
+
+std::string describeCssError(css_error error) {
+    return std::string(css_error_to_string(error)) + " (" + std::to_string(static_cast<int>(error)) + ")";
+}
+
 struct ProbeTraceCollector {
     std::vector<std::string>* trace = nullptr;
 };
@@ -222,7 +237,7 @@ LibcssSelectionProbe probeLibcssSelection(const std::string& source, const Style
         .title = "probe",
         .allow_quirks = false,
         .inline_style = false,
-        .resolve = nullptr,
+        .resolve = resolveUrl,
         .resolve_pw = nullptr,
         .import = nullptr,
         .import_pw = nullptr,
@@ -232,32 +247,36 @@ LibcssSelectionProbe probeLibcssSelection(const std::string& source, const Style
         .font_pw = nullptr,
     };
 
-    if (css_stylesheet_create(&params, &sheet) != CSS_OK || sheet == nullptr) {
-        probe.diagnostics.push_back("failed to create libcss stylesheet");
-        probe.warnings.push_back("failed to create libcss stylesheet");
+    const auto create = css_stylesheet_create(&params, &sheet);
+    if (create != CSS_OK || sheet == nullptr) {
+        probe.diagnostics.push_back("failed to create libcss stylesheet: " + describeCssError(create));
+        probe.warnings.push_back("failed to create libcss stylesheet: " + describeCssError(create));
         return probe;
     }
 
     const auto append = css_stylesheet_append_data(sheet, reinterpret_cast<const uint8_t*>(source.data()), source.size());
-    const auto done = append == CSS_OK ? css_stylesheet_data_done(sheet) : append;
-    probe.parsed = append == CSS_OK && done == CSS_OK;
+    const bool appendAccepted = append == CSS_OK || append == CSS_NEEDDATA;
+    const auto done = appendAccepted ? css_stylesheet_data_done(sheet) : append;
+    probe.parsed = appendAccepted && done == CSS_OK;
     if (!probe.parsed) {
-        probe.diagnostics.push_back("libcss stylesheet parse failed");
-        probe.warnings.push_back("libcss stylesheet parse failed");
+        probe.diagnostics.push_back("libcss stylesheet parse failed: append=" + describeCssError(append) + " done=" + describeCssError(done));
+        probe.warnings.push_back("libcss stylesheet parse failed: append=" + describeCssError(append) + " done=" + describeCssError(done));
         css_stylesheet_destroy(sheet);
         return probe;
     }
 
-    if (css_select_ctx_create(&ctx) != CSS_OK || ctx == nullptr) {
-        probe.diagnostics.push_back("failed to create libcss select context");
-        probe.warnings.push_back("failed to create libcss select context");
+    const auto createCtx = css_select_ctx_create(&ctx);
+    if (createCtx != CSS_OK || ctx == nullptr) {
+        probe.diagnostics.push_back("failed to create libcss select context: " + describeCssError(createCtx));
+        probe.warnings.push_back("failed to create libcss select context: " + describeCssError(createCtx));
         css_stylesheet_destroy(sheet);
         return probe;
     }
 
-    if (css_select_ctx_append_sheet(ctx, sheet, CSS_ORIGIN_AUTHOR, "screen") != CSS_OK) {
-        probe.diagnostics.push_back("failed to append stylesheet to libcss context");
-        probe.warnings.push_back("failed to append stylesheet to libcss context");
+    const auto appendSheet = css_select_ctx_append_sheet(ctx, sheet, CSS_ORIGIN_AUTHOR, "screen");
+    if (appendSheet != CSS_OK) {
+        probe.diagnostics.push_back("failed to append stylesheet to libcss context: " + describeCssError(appendSheet));
+        probe.warnings.push_back("failed to append stylesheet to libcss context: " + describeCssError(appendSheet));
         css_select_ctx_destroy(ctx);
         css_stylesheet_destroy(sheet);
         return probe;
