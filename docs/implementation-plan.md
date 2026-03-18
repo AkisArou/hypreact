@@ -6,6 +6,7 @@
 - add docs and SDK
 - establish config/file conventions
 - vendor `QuickJS`, `Yoga`, and `libcss` under `third_party/`
+- keep CMake setup usable even before every Hyprland native dependency is present locally
 
 ## Phase 2 - Domain types
 
@@ -27,6 +28,7 @@
 - parse source stylesheets in-process
 - normalize them into `hypreact` stylesheet types
 - keep all later code independent from `libcss` internals
+- either vendor or bridge the remaining `libparserutils` and `libwapcaplet` dependency chain for fully self-contained builds
 
 ## Phase 5 - Selector matching and cascade
 

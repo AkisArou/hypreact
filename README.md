@@ -51,6 +51,25 @@ git submodule update --init --recursive
 
 These are intentionally pinned for reproducible plugin builds.
 
+## Build Notes
+
+- `QuickJS` is compiled from vendored source in `third_party/quickjs`.
+- `Yoga` is compiled from vendored source in `third_party/yoga`.
+- `libcss` is vendored, but upstream `libcss` still depends on system `libparserutils` and `libwapcaplet`.
+
+Current CMake behavior:
+
+- if `libparserutils` and `libwapcaplet` are present via `pkg-config`, a real `libcss` bridge target is enabled
+- otherwise a stub bridge is built so the repository can still configure while style-parser integration is unfinished
+- `QuickJS` and `Yoga` build from vendored source successfully under CMake
+- the final plugin target still depends on Hyprland's native header/runtime stack, including transitive dependencies such as `pixman`
+
+To require the `libcss` dependency chain during configure:
+
+```sh
+cmake -B build -DHYPREACT_REQUIRE_LIBCSS_DEPS=ON
+```
+
 ## Config Conventions
 
 Given a config root such as `~/.config/hypreact`:
