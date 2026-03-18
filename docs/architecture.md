@@ -9,6 +9,7 @@
    - layout registration with Hyprland
    - config root discovery
    - reload hooks
+   - initialize pinned third-party runtimes from `third_party/`
 
 2. `runtime snapshot`
    - collect monitor, workspace, and window state from Hyprland
@@ -18,6 +19,7 @@
    - load the selected `layouts/<name>/index.tsx` bundle
    - provide the `hypreact` JSX runtime and SDK types
    - evaluate `layout(ctx)`
+   - built from vendored `third_party/quickjs`
 
 4. `resolved node tree`
    - normalize returned JSX output
@@ -29,11 +31,13 @@
    - parse them with `libcss`
    - convert into `hypreact` stylesheet domain types
    - match selectors and compute cascaded styles
+   - parser source vendored in `third_party/libcss`
 
 6. `Yoga bridge`
    - create Yoga nodes for structural layout nodes
    - apply layout properties
    - compute rectangles
+   - built from vendored `third_party/yoga`
 
 7. `Hyprland placement`
    - assign computed boxes to tiled windows

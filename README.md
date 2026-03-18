@@ -27,6 +27,29 @@ The project keeps the `spiders-wm` structural layout model while targeting Hyprl
 - `src/` - plugin entrypoint, layout engine, runtime integration, CSS/style system
 - `sdk/` - authoring SDK for TSX layouts and CSS module typing
 - `docs/` - architecture, CSS spec, runtime model, and implementation plan
+- `third_party/` - pinned upstream sources for `QuickJS`, `Yoga`, and `libcss`
+
+## Dependencies
+
+Core embedded dependencies are vendored as git submodules:
+
+- `third_party/quickjs`
+- `third_party/yoga`
+- `third_party/libcss`
+
+Clone with:
+
+```sh
+git clone --recursive git@github.com:AkisArou/hypreact.git
+```
+
+If you already cloned without submodules:
+
+```sh
+git submodule update --init --recursive
+```
+
+These are intentionally pinned for reproducible plugin builds.
 
 ## Config Conventions
 

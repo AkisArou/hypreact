@@ -19,6 +19,7 @@ Build `hypreact` as a Hyprland-native layout plugin with:
 - The structural node model remains `workspace`, `group`, `window`, `slot`.
 - Hyprland keeps ownership of compositor animations and most built-in decoration behavior.
 - `hypreact` v1 is flex-first and Yoga-backed; grid is out of scope unless explicitly added.
+- `QuickJS`, `Yoga`, and `libcss` are vendored as pinned git submodules under `third_party/`.
 
 ## Priority Order
 

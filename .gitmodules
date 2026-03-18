@@ -1,0 +1,9 @@
+[submodule "third_party/quickjs"]
+	path = third_party/quickjs
+	url = https://github.com/bellard/quickjs.git
+[submodule "third_party/yoga"]
+	path = third_party/yoga
+	url = https://github.com/facebook/yoga.git
+[submodule "third_party/libcss"]
+	path = third_party/libcss
+	url = https://github.com/netsurf-browser/libcss.git

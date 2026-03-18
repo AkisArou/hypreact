@@ -5,6 +5,7 @@
 - create plugin skeleton
 - add docs and SDK
 - establish config/file conventions
+- vendor `QuickJS`, `Yoga`, and `libcss` under `third_party/`
 
 ## Phase 2 - Domain types
 
