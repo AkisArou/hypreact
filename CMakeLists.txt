@@ -35,6 +35,8 @@ add_library(hypreact_quickjs STATIC
   third_party/quickjs/quickjs-libc.c
 )
 
+set_target_properties(hypreact_quickjs PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 target_include_directories(hypreact_quickjs
   PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/quickjs
@@ -47,6 +49,11 @@ target_compile_definitions(hypreact_quickjs
 )
 
 target_compile_options(hypreact_quickjs PRIVATE -fwrapv -std=gnu99)
+
+target_include_directories(hypreact_quickjs
+  SYSTEM PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/quickjs
+)
 
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BUILD_FUZZ_TESTS OFF CACHE BOOL "" FORCE)

@@ -8,6 +8,8 @@
 
 The project keeps the `spiders-wm` structural layout model while targeting Hyprland as the compositor host instead of implementing a compositor from scratch.
 
+Development setup notes live in `docs/development.md`.
+
 ## Goals
 
 - use `workspace`, `group`, `window`, and `slot` nodes as the authored layout model
