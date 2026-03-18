@@ -89,10 +89,64 @@ Given a config root such as `~/.config/hypreact`:
 - global stylesheet: `~/.config/hypreact/index.css`
 - layout entrypoint: `~/.config/hypreact/layouts/<name>/index.tsx`
 - layout stylesheet: `~/.config/hypreact/layouts/<name>/index.css`
-- reusable components: `~/.config/hypreact/components/**/*.tsx`
+- authored source can live as `js`, `ts`, `jsx`, or `tsx`
+- reusable components: `~/.config/hypreact/components/**/*.{js,ts,jsx,tsx}`
 - component stylesheet convention: sibling `*.css` next to component `*.tsx`
 
+Compiled runtime artifacts should live in a cache root such as `${XDG_CACHE_HOME:-~/.cache}/hypreact`.
+
+The intended split is:
+
+- config root: authored source and styles
+- cache root: compiled JavaScript modules consumed by `QuickJS`
+
+Current compiler behavior:
+
+- authored `js`, `ts`, `jsx`, and `tsx` layout entrypoints are bundled with `esbuild`
+- compiled output is written into the cache root and consumed from there by `QuickJS`
+- `hypreact` uses the built-in virtual runtime module `hypreact/jsx-runtime` during bundling/runtime execution
+
 The plugin should load global CSS first, then component CSS discovered through module loading, and finally the selected layout CSS.
+
+## Hyprland Plugin Config
+
+`hypreact` is configured primarily through the Hyprland config under `plugin:hypreact`.
+
+Supported keys:
+
+- `config_path` - root directory containing `index.css`, `layouts/`, and `components/`
+- `cache_path` - root directory containing compiled runtime JS artifacts
+- `layout` - optional hard override for the selected layout
+- `default_layout` - fallback layout when no override or mapping matches
+- `workspace_layout = <workspace>,<layout>` - repeatable mapping
+- `monitor_layout = <monitor>,<layout>` - repeatable mapping
+
+Example:
+
+```ini
+plugin {
+  hypreact {
+    config_path = ~/.config/hypreact
+    layout =
+    default_layout = first
+
+    workspace_layout = 1,master-stack
+    workspace_layout = 2,columns
+    workspace_layout = special:scratch,floating
+
+    monitor_layout = DP-1,wide
+    monitor_layout = HDMI-A-1,stack
+  }
+}
+```
+
+Selection precedence is intended to be:
+
+1. `layout` if explicitly set
+2. matching `monitor_layout`
+3. matching `workspace_layout`
+4. `default_layout`
+5. fallback `first`
 
 ## Initial Scope
 

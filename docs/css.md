@@ -1,6 +1,41 @@
 # hypreact CSS Spec
 
-`hypreact` CSS is parsed in-process with `libcss`, then converted into `hypreact` domain stylesheet types. Runtime code should not depend directly on `libcss` types after parsing.
+`hypreact` CSS is intended to be parsed via a `libcss` bridge into `hypreact` domain stylesheet types. The current implementation still uses a temporary internal parser behind that bridge, so the supported surface is narrower than the long-term target.
+
+## Current Implementation Status
+
+Implemented today:
+
+- stylesheet loading from config-root `index.css` and selected-layout `index.css`
+- simple selectors: `*`, type, `#id`, `.class`, type/id/class compounds without combinators such as `workspace.main`, `group#left`, and `window.primary.tiled`, plus comma-separated selector lists of those supported simple selectors
+- limited child combinators with simple selectors on both sides, such as `group > window`
+- limited descendant combinators with simple selectors on both sides, such as `workspace window`
+- exact-match window attribute selectors on simple `window` selectors: `[app-id="..."]`, `[class="..."]`, `[title="..."]`, `[floating="true|false"]`, `[fullscreen="true|false"]`
+- layout properties: `display`, `position`, `top`, `right`, `bottom`, `left`, `flex-direction`, `flex-wrap`, `flex-grow`, `flex-shrink`, `flex-basis`, `gap`, `row-gap`, `column-gap`, `justify-content`, `align-items`, `align-self`, `align-content`, `overflow`, `width`, `height`, `min-width`, `min-height`, `max-width`, `max-height`, `aspect-ratio`, `box-sizing`, `border-width`, `border-top-width`, `border-right-width`, `border-bottom-width`, `border-left-width`, `margin`, `margin-top`, `margin-right`, `margin-bottom`, `margin-left`, `padding`, `padding-top`, `padding-right`, `padding-bottom`, `padding-left`
+- typed values currently support point values (`8`, `8px`), percent values (`50%`), and `auto` where Yoga supports it (`width`, `height`, `flex-basis`, `margin*`)
+- unsupported selectors and declarations now produce parse warnings at the bridge boundary; the plugin surfaces the first warning as a Hyprland notification
+- matching rules now cascade by selector specificity first, then source order
+
+Not implemented yet:
+
+- real `libcss` selector parsing and error reporting
+- sibling combinators and richer attribute forms
+
+The current `libcss` bridge now performs a syntax-only parse check before falling back to the temporary domain parser. Selector/property support is still governed by the fallback parser, but syntax problems can now produce an explicit bridge warning.
+
+There is also a small `libcss` selection probe used in tests to cross-check overlapping selector/display behavior against a minimal `StyleNodeContext` adapter. It is not yet the production selection path.
+
+The test suite now includes fixture-driven probe cross-checks for a small overlapping subset, including `display`, `position`, `width`, `min-width`, `overflow`, `box-sizing`, `margin-left`, and `padding-right`, including percent-valued overlap cases when the minimal probe handler can resolve them.
+
+The probe-side node adapter is now split into a reusable libcss selector adapter module so future production-side selector integration can build on the same `StyleNodeContext` bridge.
+
+There is now also a small production-facing selector utility around that adapter for direct selector-match checks against `StyleNodeContext`, including a structured diagnostic result used in tests while the full production selection path is still in transition.
+
+The probe overlap surface now also includes `max-width`, `min-height`, `left`, `top`, `height`, `max-height`, `right`, and `bottom` for fixture-driven comparisons where the current adapter can resolve them.
+
+Currently implemented pseudoclasses are `:focused`, `:focused-within`, `:fullscreen`, `:floating`, `:urgent`, and `:special-workspace` where the runtime style context carries the needed state.
+- shorthand expansion beyond `margin`, `padding`, and `border-width`
+- plugin-owned visual properties
 
 ## File Conventions
 
@@ -30,7 +65,7 @@ Each node may also expose:
 - `#id`
 - `.class`
 
-## Supported Selectors
+## Target Selector Surface
 
 ### Basic selectors
 
@@ -54,9 +89,9 @@ Supported only on `window` selectors in v1:
 - `[floating="true" | "false"]`
 - `[fullscreen="true" | "false"]`
 
-Unsupported selector forms should fail clearly.
+Unsupported selector forms should fail clearly once the real parser is in place. For now they are ignored by the temporary parser.
 
-## Supported Pseudoclasses
+## Target Pseudoclasses
 
 ### Structural
 
@@ -86,38 +121,44 @@ Unsupported selector forms should fail clearly.
 - `:inactive-monitor`
 - `:special-workspace`
 
-## Supported Property Groups
+## Property Groups
 
-## Layout properties (Yoga-backed)
+### Currently implemented Yoga-backed properties
 
 - `display`
 - `position`
 - `top`, `right`, `bottom`, `left`
-- `width`, `height`
-- `min-width`, `min-height`
-- `max-width`, `max-height`
-- `margin`
-- `margin-top`, `margin-right`, `margin-bottom`, `margin-left`
-- `padding`
-- `padding-top`, `padding-right`, `padding-bottom`, `padding-left`
-- `border-width`
-- `border-top-width`, `border-right-width`, `border-bottom-width`, `border-left-width`
 - `flex-direction`
 - `flex-wrap`
 - `flex-grow`
 - `flex-shrink`
 - `flex-basis`
+- `gap`
+- `row-gap`
+- `column-gap`
 - `justify-content`
 - `align-items`
 - `align-self`
 - `align-content`
-- `gap`
-- `row-gap`
-- `column-gap`
-- `aspect-ratio`
 - `overflow`
+- `width`
+- `height`
+- `min-width`, `min-height`
+- `max-width`, `max-height`
+- `aspect-ratio`
+- `box-sizing`
+- `border-width`
+- `border-top-width`, `border-right-width`, `border-bottom-width`, `border-left-width`
+- `margin`
+- `margin-top`, `margin-right`, `margin-bottom`, `margin-left`
+- `padding`
+- `padding-top`, `padding-right`, `padding-bottom`, `padding-left`
+
+### Planned Yoga-backed properties
 
 `hypreact` v1 is flex-first. Grid properties are intentionally out of scope until there is a clear design on top of Yoga.
+
+Current shorthand support is limited to `margin`, `padding`, and `border-width` with 1, 2, 3, or 4 whitespace-separated values.
 
 ## Plugin-owned visual properties
 

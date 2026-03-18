@@ -9,6 +9,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
 option(HYPREACT_BUILD_YOGA_TESTS "Build vendored Yoga tests" OFF)
+option(BUILD_TESTING "Build hypreact tests" OFF)
 
 include(GNUInstallDirs)
 
@@ -55,7 +56,6 @@ target_include_directories(hypreact_quickjs
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/quickjs
 )
 
-set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BUILD_FUZZ_TESTS OFF CACHE BOOL "" FORCE)
 
 if(NOT HYPREACT_BUILD_YOGA_TESTS)
@@ -78,8 +78,21 @@ pkg_check_modules(HYPRLAND REQUIRED hyprland)
 pkg_check_modules(PIXMAN REQUIRED pixman-1)
 
 add_library(hypreact_libcss_bridge STATIC
+  src/style/libcss_selector_adapter.cpp
+  src/style/libcss_probe.cpp
   src/style/libcss_bridge.cpp
 )
+
+add_library(hypreact_style STATIC
+  src/style/stylesheet.cpp
+)
+
+target_include_directories(hypreact_style
+  PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_compile_options(hypreact_style PRIVATE ${HYPREACT_WARNING_FLAGS})
 
 target_include_directories(hypreact_libcss_bridge
   PUBLIC
@@ -92,6 +105,7 @@ target_include_directories(hypreact_libcss_bridge
 
 target_compile_definitions(hypreact_libcss_bridge PUBLIC HYPREACT_HAS_LIBCSS=1)
 target_compile_options(hypreact_libcss_bridge PRIVATE ${HYPREACT_WARNING_FLAGS})
+target_link_libraries(hypreact_libcss_bridge PUBLIC hypreact_style)
 target_link_directories(hypreact_libcss_bridge PRIVATE
   ${LIBCSS_LIBRARY_DIRS}
   ${LIBPARSERUTILS_LIBRARY_DIRS}
@@ -105,7 +119,12 @@ target_link_libraries(hypreact_libcss_bridge PRIVATE
 
 add_library(hypreact SHARED
   src/main.cpp
+  src/domain/layout_node.cpp
+  src/plugin/runtime_snapshot.cpp
   src/plugin/plugin.cpp
+  src/layout/resolver.cpp
+  src/layout/validator.cpp
+  src/runtime/compiler.cpp
   src/runtime/quickjs_runtime.cpp
   src/layout/layout_engine.cpp
 )
@@ -114,6 +133,7 @@ target_include_directories(hypreact PRIVATE src)
 target_include_directories(hypreact PRIVATE
   ${HYPRLAND_INCLUDE_DIRS}
   ${PIXMAN_INCLUDE_DIRS}
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yoga/yoga
 )
 
 target_compile_definitions(hypreact PRIVATE HYPREACT_USE_REAL_HYPRLAND_HEADERS=1)
@@ -126,6 +146,7 @@ target_link_directories(hypreact PRIVATE
 
 target_link_libraries(hypreact PRIVATE
   hypreact_quickjs
+  hypreact_style
   hypreact_libcss_bridge
   ${HYPRLAND_LIBRARIES}
   ${PIXMAN_LIBRARIES}
@@ -134,6 +155,25 @@ target_link_libraries(hypreact PRIVATE
 
 if(UNIX AND NOT APPLE)
   target_link_libraries(hypreact PRIVATE dl m pthread)
+endif()
+
+include(CTest)
+
+if(BUILD_TESTING)
+  add_executable(hypreact_style_tests
+    tests/style_tests.cpp
+    tests/style_test_utils.cpp
+  )
+
+  target_include_directories(hypreact_style_tests PRIVATE src)
+  target_compile_options(hypreact_style_tests PRIVATE ${HYPREACT_WARNING_FLAGS})
+  target_link_libraries(hypreact_style_tests PRIVATE
+    hypreact_style
+    hypreact_libcss_bridge
+  )
+  target_sources(hypreact_style_tests PRIVATE src/domain/layout_node.cpp src/layout/resolver.cpp)
+
+  add_test(NAME hypreact_style_tests COMMAND hypreact_style_tests)
 endif()
 
 set_target_properties(hypreact PROPERTIES

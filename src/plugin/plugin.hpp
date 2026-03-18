@@ -1,8 +1,14 @@
 #pragma once
 
+#include <memory>
 #include <string>
+#include <unordered_map>
 
 #include "hyprland_compat.hpp"
+
+namespace hypreact::runtime {
+class QuickJsRuntime;
+}
 
 namespace hypreact::plugin {
 
@@ -23,6 +29,18 @@ class Plugin {
 
   private:
     Plugin() = default;
+
+    std::unique_ptr<runtime::QuickJsRuntime> runtime_;
+    std::unordered_map<std::string, std::string> workspaceLayouts_;
+    std::unordered_map<std::string, std::string> monitorLayouts_;
+
+    [[nodiscard]] static std::string detectConfigRoot(HANDLE handle);
+    [[nodiscard]] static std::string detectCacheRoot(HANDLE handle);
+    [[nodiscard]] static std::string detectSelectedLayout(HANDLE handle);
+    [[nodiscard]] std::string resolveLayoutForSelection(const std::string& monitor, const std::string& workspace) const;
+
+    static Hyprlang::CParseResult onWorkspaceLayoutKeyword(const char* command, const char* value);
+    static Hyprlang::CParseResult onMonitorLayoutKeyword(const char* command, const char* value);
 };
 
 } // namespace hypreact::plugin

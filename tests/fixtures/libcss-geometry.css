@@ -1,0 +1,6 @@
+window.main:focused {
+  height: 22px;
+  max-height: 44px;
+  right: 5px;
+  bottom: 7px;
+}

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -16,6 +17,11 @@ struct LayoutNode {
     LayoutNodeType type;
     std::string id;
     std::vector<std::string> classes;
+    std::optional<std::string> match;
+    std::optional<int> take;
+    std::vector<LayoutNode> children;
 };
+
+std::string toString(LayoutNodeType type);
 
 } // namespace hypreact::domain

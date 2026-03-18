@@ -28,6 +28,8 @@ The plugin shared object is produced at:
 build/libhypreact.so
 ```
 
+For local runtime experiments, `examples/config/` contains a minimal config tree and example Hyprland plugin block.
+
 ## Dependencies
 
 `hypreact` currently expects:
@@ -36,9 +38,10 @@ build/libhypreact.so
 - vendored `Yoga` under `third_party/yoga`
 - system-installed `libcss`, `libparserutils`, and `libwapcaplet`
 - system-installed Hyprland development headers and their transitive native dependencies
+- `esbuild` available on `PATH` for layout/module compilation
 
 Example Arch packages:
 
 ```sh
-sudo pacman -S hyprland pixman libcss libparserutils libwapcaplet pkgconf cmake clang
+sudo pacman -S hyprland pixman libcss libparserutils libwapcaplet pkgconf cmake clang esbuild
 ```
