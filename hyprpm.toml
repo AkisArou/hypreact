@@ -1,0 +1,13 @@
+[repository]
+name = "hypreact"
+authors = ["AkisArou"]
+commit_pins = []
+
+[hypreact]
+description = "QuickJS and Yoga powered layout plugin for Hyprland"
+authors = ["AkisArou"]
+output = "build/libhypreact.so"
+build = [
+  "cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -B build",
+  "cmake --build build"
+]

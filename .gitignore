@@ -1,0 +1,13 @@
+/build/
+/compile_commands.json
+/.cache/
+/.idea/
+/.vscode/
+*.so
+*.o
+*.a
+*.out
+*.log
+*.swp
+*.tmp
+/.DS_Store
