@@ -10,6 +10,25 @@ namespace hypreact::style {
 
 namespace {
 
+struct TraceCollector {
+    std::vector<std::string>* trace = nullptr;
+};
+
+void pushTrace(void* pw, const std::string& event) {
+    auto* collector = static_cast<TraceCollector*>(pw);
+    if (collector != nullptr && collector->trace != nullptr) {
+        collector->trace->push_back(event);
+    }
+}
+
+std::string nodeSummary(const LibcssAdapterNode* node) {
+    if (node == nullptr || node->context == nullptr) {
+        return "<null>";
+    }
+
+    return std::string(domain::toString(node->context->type)) + "#" + node->context->id;
+}
+
 LibcssAdapterNode* adapterParent(LibcssAdapterNode* node, const css_qname* qname) {
     if (node == nullptr || node->context == nullptr || node->context->parent == nullptr) {
         return nullptr;
@@ -28,6 +47,7 @@ LibcssAdapterNode* adapterParent(LibcssAdapterNode* node, const css_qname* qname
 }
 
 css_error nodeName(void* pw, void* node, css_qname* qname) {
+    pushTrace(pw, "node_name " + nodeSummary(static_cast<LibcssAdapterNode*>(node)));
     (void)pw;
     const auto* adapter = static_cast<LibcssAdapterNode*>(node);
     qname->ns = nullptr;
@@ -40,6 +60,7 @@ css_error nodeName(void* pw, void* node, css_qname* qname) {
 }
 
 css_error nodeClasses(void* pw, void* node, lwc_string*** classes, uint32_t* n_classes) {
+    pushTrace(pw, "node_classes " + nodeSummary(static_cast<LibcssAdapterNode*>(node)));
     (void)pw;
     const auto* adapter = static_cast<LibcssAdapterNode*>(node);
     *n_classes = static_cast<uint32_t>(adapter->context->classes.size());
@@ -61,6 +82,7 @@ css_error nodeClasses(void* pw, void* node, lwc_string*** classes, uint32_t* n_c
 }
 
 css_error nodeId(void* pw, void* node, lwc_string** id) {
+    pushTrace(pw, "node_id " + nodeSummary(static_cast<LibcssAdapterNode*>(node)));
     (void)pw;
     const auto* adapter = static_cast<LibcssAdapterNode*>(node);
     const auto value = internLibcssString(adapter->context->id);
@@ -72,18 +94,21 @@ css_error nodeId(void* pw, void* node, lwc_string** id) {
 }
 
 css_error parentNode(void* pw, void* node, void** parent) {
+    pushTrace(pw, "parent_node " + nodeSummary(static_cast<LibcssAdapterNode*>(node)));
     (void)pw;
     *parent = adapterParent(static_cast<LibcssAdapterNode*>(node), nullptr);
     return CSS_OK;
 }
 
 css_error namedParentNode(void* pw, void* node, const css_qname* qname, void** parent) {
+    pushTrace(pw, "named_parent_node " + nodeSummary(static_cast<LibcssAdapterNode*>(node)));
     (void)pw;
     *parent = adapterParent(static_cast<LibcssAdapterNode*>(node), qname);
     return CSS_OK;
 }
 
 css_error namedAncestorNode(void* pw, void* node, const css_qname* qname, void** ancestor) {
+    pushTrace(pw, "named_ancestor_node " + nodeSummary(static_cast<LibcssAdapterNode*>(node)));
     (void)pw;
     auto* current = static_cast<LibcssAdapterNode*>(node);
     while (true) {
@@ -112,6 +137,7 @@ css_error unsupportedNamedNodeOp(void* pw, void* node, const css_qname* qname, v
 }
 
 css_error nodeHasName(void* pw, void* node, const css_qname* qname, bool* match) {
+    pushTrace(pw, "node_has_name " + nodeSummary(static_cast<LibcssAdapterNode*>(node)));
     (void)pw;
     const auto* adapter = static_cast<LibcssAdapterNode*>(node);
     *match = qname->name != nullptr && std::strcmp(lwc_string_data(qname->name), domain::toString(adapter->context->type).c_str()) == 0;
@@ -119,6 +145,7 @@ css_error nodeHasName(void* pw, void* node, const css_qname* qname, bool* match)
 }
 
 css_error nodeHasClass(void* pw, void* node, lwc_string* name, bool* match) {
+    pushTrace(pw, "node_has_class " + nodeSummary(static_cast<LibcssAdapterNode*>(node)));
     (void)pw;
     const auto* adapter = static_cast<LibcssAdapterNode*>(node);
     *match = false;
@@ -132,6 +159,7 @@ css_error nodeHasClass(void* pw, void* node, lwc_string* name, bool* match) {
 }
 
 css_error nodeHasId(void* pw, void* node, lwc_string* name, bool* match) {
+    pushTrace(pw, "node_has_id " + nodeSummary(static_cast<LibcssAdapterNode*>(node)));
     (void)pw;
     const auto* adapter = static_cast<LibcssAdapterNode*>(node);
     *match = adapter->context->id == lwc_string_data(name);
@@ -139,6 +167,7 @@ css_error nodeHasId(void* pw, void* node, lwc_string* name, bool* match) {
 }
 
 css_error nodeHasAttribute(void* pw, void* node, const css_qname* qname, bool* match) {
+    pushTrace(pw, "node_has_attribute " + nodeSummary(static_cast<LibcssAdapterNode*>(node)));
     (void)pw;
     const auto* adapter = static_cast<LibcssAdapterNode*>(node);
     *match = adapter->context->window != nullptr && (
@@ -152,6 +181,7 @@ css_error nodeHasAttribute(void* pw, void* node, const css_qname* qname, bool* m
 }
 
 css_error nodeHasAttributeEqual(void* pw, void* node, const css_qname* qname, lwc_string* value, bool* match) {
+    pushTrace(pw, "node_has_attribute_equal " + nodeSummary(static_cast<LibcssAdapterNode*>(node)));
     (void)pw;
     const auto* adapter = static_cast<LibcssAdapterNode*>(node);
     *match = false;
@@ -170,6 +200,7 @@ css_error nodeHasAttributeEqual(void* pw, void* node, const css_qname* qname, lw
 }
 
 css_error nodeIsRoot(void* pw, void* node, bool* match) {
+    pushTrace(pw, "node_is_root " + nodeSummary(static_cast<LibcssAdapterNode*>(node)));
     (void)pw;
     const auto* adapter = static_cast<LibcssAdapterNode*>(node);
     *match = adapter->context->parent == nullptr;
@@ -177,6 +208,7 @@ css_error nodeIsRoot(void* pw, void* node, bool* match) {
 }
 
 css_error nodeIsFocus(void* pw, void* node, bool* match) {
+    pushTrace(pw, "node_is_focus " + nodeSummary(static_cast<LibcssAdapterNode*>(node)));
     (void)pw;
     const auto* adapter = static_cast<LibcssAdapterNode*>(node);
     *match = adapter->context->focused;
@@ -184,6 +216,7 @@ css_error nodeIsFocus(void* pw, void* node, bool* match) {
 }
 
 css_error nodeIsTarget(void* pw, void* node, bool* match) {
+    pushTrace(pw, "node_is_target " + nodeSummary(static_cast<LibcssAdapterNode*>(node)));
     (void)pw;
     const auto* adapter = static_cast<LibcssAdapterNode*>(node);
     *match = adapter->context->visible;
@@ -198,6 +231,7 @@ css_error noBool(void* pw, void* node, bool* match) {
 }
 
 css_error nodeCountSiblings(void* pw, void* node, bool same_name, bool after, int32_t* count) {
+    pushTrace(pw, "node_count_siblings " + nodeSummary(static_cast<LibcssAdapterNode*>(node)));
     (void)pw;
     (void)node;
     (void)same_name;
@@ -207,6 +241,7 @@ css_error nodeCountSiblings(void* pw, void* node, bool same_name, bool after, in
 }
 
 css_error nodePresentationalHint(void* pw, void* node, uint32_t* nhints, css_hint** hints) {
+    pushTrace(pw, "node_presentational_hint " + nodeSummary(static_cast<LibcssAdapterNode*>(node)));
     (void)pw;
     (void)node;
     *nhints = 0;
@@ -215,6 +250,7 @@ css_error nodePresentationalHint(void* pw, void* node, uint32_t* nhints, css_hin
 }
 
 css_error uaDefaultForProperty(void* pw, uint32_t property, css_hint* hint) {
+    pushTrace(pw, "ua_default_for_property");
     (void)pw;
     (void)property;
     (void)hint;
@@ -222,6 +258,7 @@ css_error uaDefaultForProperty(void* pw, uint32_t property, css_hint* hint) {
 }
 
 css_error nodeDataSet(void* pw, void* node, void* libcss_node_data) {
+    pushTrace(pw, "set_libcss_node_data " + nodeSummary(static_cast<LibcssAdapterNode*>(node)));
     (void)pw;
     (void)node;
     (void)libcss_node_data;
@@ -229,6 +266,7 @@ css_error nodeDataSet(void* pw, void* node, void* libcss_node_data) {
 }
 
 css_error nodeDataGet(void* pw, void* node, void** libcss_node_data) {
+    pushTrace(pw, "get_libcss_node_data " + nodeSummary(static_cast<LibcssAdapterNode*>(node)));
     (void)pw;
     (void)node;
     *libcss_node_data = nullptr;
@@ -354,6 +392,7 @@ LibcssSelectorMatchResult libcssMatchSelector(const std::string& selector, const
         return result;
     }
 
+    TraceCollector collector {.trace = &result.trace};
     auto handler = makeLibcssSelectHandler();
     auto chain = buildLibcssAdapterChain(node);
     const css_media media {.type = CSS_MEDIA_SCREEN};
@@ -369,7 +408,7 @@ LibcssSelectorMatchResult libcssMatchSelector(const std::string& selector, const
     };
 
     css_select_results* results = nullptr;
-    const auto selected = css_select_style(ctx, &chain.back(), &unitCtx, &media, nullptr, &handler, nullptr, &results) == CSS_OK && results != nullptr;
+    const auto selected = css_select_style(ctx, &chain.back(), &unitCtx, &media, nullptr, &handler, &collector, &results) == CSS_OK && results != nullptr;
     if (selected) {
         result.matched = css_computed_display(results->styles[CSS_PSEUDO_ELEMENT_NONE], false) == CSS_DISPLAY_NONE;
         if (!result.matched) {

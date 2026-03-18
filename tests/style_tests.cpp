@@ -8,6 +8,7 @@
 #include "domain/runtime_snapshot.hpp"
 #include "layout/resolver.hpp"
 #include "style/libcss_bridge.hpp"
+#include "style/debug_dump.hpp"
 #include "style/libcss_selector_adapter.hpp"
 #include "style/stylesheet.hpp"
 #include "style_test_utils.hpp"
@@ -380,6 +381,7 @@ void testLibcssSelectionProbe() {
     expect(probe.selected || !probe.warnings.empty(), "libcss probe should either select or explain failure");
     if (probe.selected) {
         expect(probe.display.has_value() && *probe.display == "none", "libcss probe should resolve display");
+        expect(probe.authoredMatch, "libcss probe should report authored match for display rule");
     }
 }
 
@@ -593,6 +595,21 @@ void testLibcssSelectorAdapter() {
     expect(match.matched || !match.diagnostics.empty(), "selector adapter should match or explain failure");
 }
 
+void testLibcssSelectorAdapterDiagnostics() {
+    const hypreact::style::StyleNodeContext node {
+        .type = LayoutNodeType::Window,
+        .id = "win-1",
+    };
+
+    const auto match = hypreact::style::libcssMatchSelector("group.main", node);
+    expect(!match.matched, "non-matching selector should not match");
+    expect(!match.diagnostics.empty(), "non-matching selector should provide diagnostics");
+    if (match.parsed) {
+        expect(!match.trace.empty(), "parsed non-matching selector should capture adapter trace");
+        expect(match.trace.front().find(" ") != std::string::npos, "trace entries should include payload details");
+    }
+}
+
 void testFallbackAutoAndLonghandPrecedenceFixtures() {
     const hypreact::style::StyleNodeContext node {
         .type = LayoutNodeType::Window,
@@ -657,15 +674,354 @@ void testLibcssGeometryFixture() {
     const auto probe = hypreact::style::probeLibcssSelection(stylesheet, node);
     expectLength(computed.height, LengthUnit::Points, 22.0f, "fallback parser should match height fixture");
     expectLength(computed.maxHeight, LengthUnit::Points, 44.0f, "fallback parser should match max-height fixture");
-    expectLength(computed.right, LengthUnit::Points, 5.0f, "fallback parser should match right fixture");
-    expectLength(computed.bottom, LengthUnit::Points, 7.0f, "fallback parser should match bottom fixture");
+    expectLength(computed.right, LengthUnit::Percent, 10.0f, "fallback parser should match right fixture");
+    expectLength(computed.bottom, LengthUnit::Percent, 20.0f, "fallback parser should match bottom fixture");
     expect(probe.selected || !probe.warnings.empty(), "libcss geometry fixture should select or explain failure");
+    expect(probe.selected || !probe.diagnostics.empty(), "probe should provide structured diagnostics when needed");
+    if (probe.parsed) {
+        expect(!probe.trace.empty(), "parsed probe should capture trace entries");
+    }
     if (probe.selected) {
         if (probe.height.has_value()) expectNear(*probe.height, 22.0f, "libcss fixture should agree on height");
         if (probe.maxHeight.has_value()) expectNear(*probe.maxHeight, 44.0f, "libcss fixture should agree on max-height");
-        if (probe.right.has_value()) expectNear(*probe.right, 5.0f, "libcss fixture should agree on right");
-        if (probe.bottom.has_value()) expectNear(*probe.bottom, 7.0f, "libcss fixture should agree on bottom");
+        if (probe.right.has_value()) expectNear(*probe.right, 10.0f, "libcss fixture should agree on right");
+        if (probe.bottom.has_value()) expectNear(*probe.bottom, 20.0f, "libcss fixture should agree on bottom");
     }
+}
+
+void testLibcssGeometryNoMatchFixture() {
+    const hypreact::style::StyleNodeContext node {
+        .type = LayoutNodeType::Window,
+        .id = "win-1",
+        .classes = {"main"},
+    };
+
+    const auto stylesheet = hypreact::test::readFixture("libcss-geometry-nomatch.css");
+    const auto parsed = hypreact::style::parseStylesheetDetailed(stylesheet);
+    const auto computed = hypreact::style::computeStyle(parsed.stylesheet, node);
+    const auto match = hypreact::style::libcssMatchSelector("group.main", node);
+    expect(!computed.height.has_value(), "non-matching fallback fixture should not apply height");
+    expect(!computed.right.has_value(), "non-matching fallback fixture should not apply right");
+    expect(!match.matched, "non-matching geometry selector should not match");
+    expect(!match.diagnostics.empty(), "non-matching geometry selector should explain failure");
+}
+
+void testDebugDumpJsonFormat() {
+    const hypreact::domain::WindowSnapshot window {
+        .id = "1",
+        .focused = true,
+    };
+    const hypreact::style::StyleNodeContext node {
+        .type = LayoutNodeType::Window,
+        .id = "win-1",
+        .classes = {"main"},
+        .window = &window,
+        .focused = true,
+    };
+
+    const auto stylesheetSource = hypreact::test::readFixture("libcss-geometry.css");
+    const auto parsed = hypreact::style::parseStylesheetDetailed(stylesheetSource);
+    const auto fallback = hypreact::style::computeStyle(parsed.stylesheet, node);
+    const auto match = hypreact::style::libcssMatchSelector("window.main:focus", node);
+    const auto probe = hypreact::style::probeLibcssSelection(stylesheetSource, node);
+    const auto json = hypreact::style::formatSelectorDebugDumpJson(match, probe, fallback, parsed.stylesheet.rules.size());
+    const auto parsedJson = hypreact::test::parseJson(json);
+
+    expect(parsedJson.has_value(), "debug dump should be valid JSON");
+    expect(parsedJson->contains("matched"), "debug dump should include matched field");
+    expect(parsedJson->contains("probeParsed"), "debug dump should include probeParsed field");
+    expect(parsedJson->contains("fallback"), "debug dump should include fallback object");
+    expect(parsedJson->contains("probeAuthoredMatch"), "debug dump should include probeAuthoredMatch field");
+    expect(parsedJson->contains("position"), "debug dump should include position field");
+    expect(parsedJson->contains("height"), "debug dump should include height field");
+    expect(parsedJson->contains("minWidth"), "debug dump should include minWidth field");
+    expect(parsedJson->contains("maxHeight"), "debug dump should include maxHeight field");
+    expect(parsedJson->contains("minHeight"), "debug dump should include minHeight field");
+    expect(parsedJson->contains("marginLeft"), "debug dump should include marginLeft field");
+    expect(parsedJson->contains("paddingRight"), "debug dump should include paddingRight field");
+    expect(parsedJson->contains("bottom"), "debug dump should include bottom field");
+    expect(parsedJson->contains("trace"), "debug dump should include trace array");
+    expect(parsedJson->contains("probeTrace"), "debug dump should include probeTrace array");
+    expect(parsedJson->contains("diagnostics"), "debug dump should include diagnostics array");
+    expect(parsedJson->contains("probeDiagnostics"), "debug dump should include probeDiagnostics array");
+    expect(parsedJson->contains("probeWarnings"), "debug dump should include probeWarnings array");
+
+    const auto& fallbackField = (*parsedJson)["fallback"];
+    expect(fallbackField.is_object(), "debug dump fallback should be a parsed object");
+    const auto& heightField = fallbackField["height"];
+    expect(heightField.is_object(), "debug dump fallback should include parsed height object");
+    expect(heightField["unit"].is_string() && heightField["unit"].get<std::string>() == "points", "debug dump fallback height unit should parse");
+    expect(heightField["value"].is_number(), "debug dump fallback height value should parse as number");
+    expectNear(heightField["value"].get<float>(), 22.0f, "debug dump fallback height value should match fixture");
+}
+
+void testDebugDumpGoldenFixture() {
+    const hypreact::domain::WindowSnapshot window {
+        .id = "1",
+        .focused = true,
+    };
+    const hypreact::style::StyleNodeContext node {
+        .type = LayoutNodeType::Window,
+        .id = "win-1",
+        .classes = {"main"},
+        .window = &window,
+        .focused = true,
+    };
+
+    const auto stylesheetSource = hypreact::test::readFixture("libcss-geometry.css");
+    const auto parsed = hypreact::style::parseStylesheetDetailed(stylesheetSource);
+    const auto fallback = hypreact::style::computeStyle(parsed.stylesheet, node);
+    hypreact::style::LibcssSelectorMatchResult match;
+    hypreact::style::LibcssSelectionProbe probe;
+    probe.parsed = true;
+    probe.selected = true;
+    probe.height = 22.0f;
+    probe.maxHeight = 44.0f;
+    probe.right = 10.0f;
+    probe.bottom = 20.0f;
+
+    const auto json = hypreact::style::formatSelectorDebugDumpJson(match, probe, fallback, parsed.stylesheet.rules.size());
+    const auto golden = hypreact::test::readFixture("debug-dump-golden.jsonl");
+    const auto parsedJson = hypreact::test::parseJson(json);
+    const auto parsedGolden = hypreact::test::parseJson(golden);
+
+    expect(parsedJson.has_value(), "golden dump output should parse as JSON");
+    expect(parsedGolden.has_value(), "golden dump fixture should parse as JSON");
+    expect(parsedJson->contains("matched"), "golden dump should include matched field");
+    expect(parsedGolden->contains("matched"), "golden fixture should include matched field");
+    expect((*parsedJson)["matched"] == (*parsedGolden)["matched"], "golden dump should preserve matched field");
+    expect((*parsedJson)["probeParsed"] == (*parsedGolden)["probeParsed"], "golden dump should preserve probeParsed field");
+    expect((*parsedJson)["probeAuthoredMatch"] == (*parsedGolden)["probeAuthoredMatch"], "golden dump should preserve probeAuthoredMatch field");
+    expect((*parsedJson)["fallback"] == (*parsedGolden)["fallback"], "golden dump should preserve fallback object shape");
+    expect((*parsedJson)["trace"] == (*parsedGolden)["trace"], "golden dump should preserve trace array shape");
+    expect((*parsedJson)["probeTrace"] == (*parsedGolden)["probeTrace"], "golden dump should preserve probeTrace array shape");
+    expect((*parsedJson)["fallback"]["right"] == (*parsedGolden)["fallback"]["right"], "golden fallback right field should match exactly");
+}
+
+void testDebugDumpGoldenRichFixture() {
+    hypreact::style::LibcssSelectorMatchResult match;
+    match.matched = true;
+    match.trace.push_back("node_name window#win-1");
+
+    hypreact::style::LibcssSelectionProbe probe;
+    probe.parsed = true;
+    probe.selected = true;
+    probe.display = "none";
+    probe.position = "absolute";
+    probe.width = 24.0f;
+    probe.right = 10.0f;
+    probe.trace.push_back("probe_select_start");
+
+    hypreact::style::ComputedStyle fallback;
+    fallback.display = "none";
+    fallback.position = "absolute";
+    fallback.width = hypreact::style::LengthValue {.unit = hypreact::style::LengthUnit::Points, .value = 24.0f};
+    fallback.right = hypreact::style::LengthValue {.unit = hypreact::style::LengthUnit::Percent, .value = 10.0f};
+    fallback.bottom = hypreact::style::LengthValue {.unit = hypreact::style::LengthUnit::Percent, .value = 20.0f};
+
+    const auto json = hypreact::style::formatSelectorDebugDumpJson(match, probe, fallback, 1);
+    const auto golden = hypreact::test::readFixture("debug-dump-golden-rich.jsonl");
+    const auto parsedJson = hypreact::test::parseJson(json);
+    const auto parsedGolden = hypreact::test::parseJson(golden);
+
+    expect(parsedJson.has_value(), "rich golden output should parse as JSON");
+    expect(parsedGolden.has_value(), "rich golden fixture should parse as JSON");
+    expect((*parsedJson)["matched"] == (*parsedGolden)["matched"], "rich golden should preserve matched field");
+    expect((*parsedJson)["probeAuthoredMatch"] == (*parsedGolden)["probeAuthoredMatch"], "rich golden should preserve probeAuthoredMatch field");
+    expect((*parsedJson)["display"] == (*parsedGolden)["display"], "rich golden should preserve display field");
+    expect((*parsedJson)["trace"].is_array(), "rich golden trace should be an array");
+    expect((*parsedJson)["fallback"].is_object(), "rich golden fallback should be an object");
+    expect((*parsedJson)["fallback"].contains("width"), "fallback object should include width");
+    expect((*parsedJson)["fallback"].contains("right"), "fallback object should include right");
+    expect((*parsedJson)["fallback"].contains("bottom"), "fallback object should include bottom");
+    expect((*parsedJson)["trace"].size() == 1, "rich golden trace should contain one entry");
+    expect((*parsedJson)["trace"][0].get<std::string>() == "node_name window#win-1", "rich golden trace should preserve string payload");
+}
+
+void testDebugDumpGoldenNoMatchFixture() {
+    hypreact::style::LibcssSelectorMatchResult match;
+    match.diagnostics.push_back("selector did not match");
+    hypreact::style::LibcssSelectionProbe probe;
+    probe.diagnostics.push_back("libcss selection failed");
+    const hypreact::style::ComputedStyle fallback;
+
+    const auto json = hypreact::style::formatSelectorDebugDumpJson(match, probe, fallback, 0);
+    const auto golden = hypreact::test::readFixture("debug-dump-golden-nomatch.jsonl");
+    const auto parsedJson = hypreact::test::parseJson(json);
+    const auto parsedGolden = hypreact::test::parseJson(golden);
+    expect(parsedJson.has_value() && parsedGolden.has_value(), "non-match dumps should parse as JSON");
+    expect((*parsedJson)["matched"] == (*parsedGolden)["matched"], "non-match golden should preserve matched field");
+    expect((*parsedJson)["probeAuthoredMatch"] == (*parsedGolden)["probeAuthoredMatch"], "non-match golden should preserve probeAuthoredMatch field");
+    expect((*parsedJson)["diagnostics"] == (*parsedGolden)["diagnostics"], "non-match golden should preserve diagnostics array");
+    expect((*parsedJson)["probeDiagnostics"] == (*parsedGolden)["probeDiagnostics"], "non-match golden should preserve probe diagnostics array");
+    expect((*parsedJson)["probeWarnings"] == (*parsedGolden)["probeWarnings"], "non-match golden should preserve probe warnings array");
+}
+
+void testDebugDumpGoldenTracedFixture() {
+    hypreact::style::LibcssSelectorMatchResult match;
+    match.trace.push_back("node_name window#win-1");
+    match.trace.push_back("node_has_name window#win-1");
+    match.diagnostics.push_back("selector did not match");
+
+    hypreact::style::LibcssSelectionProbe probe;
+    probe.parsed = true;
+    probe.trace.push_back("probe_select_start");
+    probe.trace.push_back("probe_select_failure");
+    probe.diagnostics.push_back("libcss selection failed");
+
+    const hypreact::style::ComputedStyle fallback;
+    const auto json = hypreact::style::formatSelectorDebugDumpJson(match, probe, fallback, 0);
+    const auto golden = hypreact::test::readFixture("debug-dump-golden-traced.jsonl");
+    const auto parsedJson = hypreact::test::parseJson(json);
+    const auto parsedGolden = hypreact::test::parseJson(golden);
+
+    expect(parsedJson.has_value(), "traced golden output should parse as JSON");
+    expect(parsedGolden.has_value(), "traced golden fixture should parse as JSON");
+    expect((*parsedJson)["trace"] == (*parsedGolden)["trace"], "traced golden should preserve selector trace array");
+    expect((*parsedJson)["probeAuthoredMatch"] == (*parsedGolden)["probeAuthoredMatch"], "traced golden should preserve probeAuthoredMatch field");
+    expect((*parsedJson)["probeTrace"] == (*parsedGolden)["probeTrace"], "traced golden should preserve probe trace array");
+    expect((*parsedJson)["diagnostics"] == (*parsedGolden)["diagnostics"], "traced golden should preserve diagnostics array");
+    expect((*parsedJson)["probeWarnings"] == (*parsedGolden)["probeWarnings"], "traced golden should preserve probe warnings array");
+    expect((*parsedJson)["probeTrace"].is_array(), "traced golden probeTrace should parse as array");
+    expect((*parsedJson)["probeTrace"].size() == 2, "traced golden probeTrace should preserve both entries");
+    expect((*parsedJson)["probeTrace"][0].get<std::string>() == "probe_select_start", "traced golden should preserve first probe trace entry");
+    expect((*parsedJson)["probeTrace"][1].get<std::string>() == "probe_select_failure", "traced golden should preserve second probe trace entry");
+}
+
+void testDebugDumpGoldenDiagnosticsFixture() {
+    hypreact::style::LibcssSelectorMatchResult match;
+    match.matched = true;
+    match.diagnostics.push_back("selector matched with fallback warning");
+
+    hypreact::style::LibcssSelectionProbe probe;
+    probe.parsed = true;
+    probe.selected = true;
+    probe.position = "absolute";
+    probe.width = 24.0f;
+    probe.height = 18.0f;
+    probe.top = 3.0f;
+    probe.right = 11.0f;
+    probe.bottom = 7.0f;
+    probe.diagnostics.push_back("libcss selected subset only");
+    probe.warnings.push_back("probe warning detail");
+    probe.trace.push_back("probe_select_start");
+    probe.trace.push_back("probe_select_success");
+
+    hypreact::style::ComputedStyle fallback;
+    fallback.position = "absolute";
+    fallback.width = hypreact::style::LengthValue {.unit = hypreact::style::LengthUnit::Points, .value = 24.0f};
+
+    const auto json = hypreact::style::formatSelectorDebugDumpJson(match, probe, fallback, 1);
+    const auto golden = hypreact::test::readFixture("debug-dump-golden-diagnostics.jsonl");
+    const auto parsedJson = hypreact::test::parseJson(json);
+    const auto parsedGolden = hypreact::test::parseJson(golden);
+
+    expect(parsedJson.has_value() && parsedGolden.has_value(), "diagnostics dump should parse as JSON");
+    expect(*parsedJson == *parsedGolden, "diagnostics golden should match full JSON shape");
+    expect((*parsedJson)["probeDiagnostics"].is_array(), "diagnostics golden should include probeDiagnostics array");
+    expect((*parsedJson)["probeDiagnostics"].size() == 1, "diagnostics golden should include one probe diagnostic");
+    expect((*parsedJson)["probeDiagnostics"][0].get<std::string>() == "libcss selected subset only", "diagnostics golden should preserve probe diagnostic payload");
+    expect((*parsedJson)["probeAuthoredMatch"] == false, "diagnostics golden should preserve authored match flag");
+    expect((*parsedJson)["probeWarnings"].is_array(), "diagnostics golden should include probeWarnings array");
+    expect((*parsedJson)["probeWarnings"].size() == 1, "diagnostics golden should include one probe warning");
+    expect((*parsedJson)["probeWarnings"][0].get<std::string>() == "probe warning detail", "diagnostics golden should preserve probe warning payload");
+    expectNear((*parsedJson)["height"].get<float>(), 18.0f, "diagnostics golden should preserve top-level height");
+    expectNear((*parsedJson)["top"].get<float>(), 3.0f, "diagnostics golden should preserve top-level top");
+    expectNear((*parsedJson)["right"].get<float>(), 11.0f, "diagnostics golden should preserve top-level right");
+    expectNear((*parsedJson)["bottom"].get<float>(), 7.0f, "diagnostics golden should preserve top-level bottom");
+}
+
+void testDebugDumpGoldenNumericProbeFixture() {
+    hypreact::style::LibcssSelectionProbe probe;
+    probe.parsed = true;
+    probe.selected = true;
+    probe.minWidth = 12.0f;
+    probe.minHeight = 15.0f;
+    probe.marginLeft = 9.0f;
+    probe.paddingRight = 4.0f;
+    probe.left = 1.0f;
+    probe.top = 2.0f;
+    probe.right = 3.0f;
+    probe.bottom = 4.0f;
+    probe.warnings.push_back("numeric subset only");
+
+    const hypreact::style::LibcssSelectorMatchResult match;
+    const hypreact::style::ComputedStyle fallback;
+
+    const auto json = hypreact::style::formatSelectorDebugDumpJson(match, probe, fallback, 0);
+    const auto golden = hypreact::test::readFixture("debug-dump-golden-numeric-probe.jsonl");
+    const auto parsedJson = hypreact::test::parseJson(json);
+    const auto parsedGolden = hypreact::test::parseJson(golden);
+
+    expect(parsedJson.has_value() && parsedGolden.has_value(), "numeric probe dump should parse as JSON");
+    expect(*parsedJson == *parsedGolden, "numeric probe golden should match full JSON shape");
+    expect((*parsedJson)["probeAuthoredMatch"] == false, "numeric probe golden should default authored match to false");
+    expectNear((*parsedJson)["minWidth"].get<float>(), 12.0f, "numeric probe golden should preserve minWidth");
+    expectNear((*parsedJson)["minHeight"].get<float>(), 15.0f, "numeric probe golden should preserve minHeight");
+    expectNear((*parsedJson)["marginLeft"].get<float>(), 9.0f, "numeric probe golden should preserve marginLeft");
+    expectNear((*parsedJson)["paddingRight"].get<float>(), 4.0f, "numeric probe golden should preserve paddingRight");
+    expect((*parsedJson)["probeWarnings"].size() == 1, "numeric probe golden should preserve warning count");
+    expect((*parsedJson)["probeWarnings"][0].get<std::string>() == "numeric subset only", "numeric probe golden should preserve warning payload");
+}
+
+void testDebugDumpRealFailureFixture() {
+    const hypreact::style::StyleNodeContext node {
+        .type = LayoutNodeType::Window,
+        .id = "win-1",
+        .classes = {"main"},
+        .focused = true,
+    };
+
+    const auto stylesheet = hypreact::test::readFixture("libcss-invalid.css");
+    const auto parsed = hypreact::style::parseStylesheetDetailed(stylesheet);
+    const auto fallback = hypreact::style::computeStyle(parsed.stylesheet, node);
+    const auto selector = hypreact::style::libcssMatchSelector("group.main", node);
+    const auto probe = hypreact::style::probeLibcssSelection(stylesheet, node);
+    const auto json = hypreact::style::formatSelectorDebugDumpJson(selector, probe, fallback, parsed.stylesheet.rules.size());
+    const auto parsedJson = hypreact::test::parseJson(json);
+
+    expect(parsedJson.has_value(), "real failure dump should parse as JSON");
+    expect(!selector.matched, "real failure selector should not match");
+    expect(!selector.diagnostics.empty(), "real failure selector should have diagnostics");
+    expect(probe.parsed == false, "real failure probe should report parse failure");
+    expect(!probe.diagnostics.empty(), "real failure probe should have diagnostics");
+    expect(!probe.warnings.empty(), "real failure probe should have warnings");
+    expect((*parsedJson)["probeParsed"] == false, "real failure dump should report probeParsed false");
+    expect((*parsedJson)["probeAuthoredMatch"] == false, "real failure dump should report probeAuthoredMatch false");
+    expect((*parsedJson)["diagnostics"].is_array() && !(*parsedJson)["diagnostics"].empty(), "real failure dump should include selector diagnostics");
+    expect((*parsedJson)["probeDiagnostics"].is_array() && !(*parsedJson)["probeDiagnostics"].empty(), "real failure dump should include probe diagnostics");
+    expect((*parsedJson)["probeWarnings"].is_array() && !(*parsedJson)["probeWarnings"].empty(), "real failure dump should include probe warnings");
+    expect((*parsedJson)["trace"].is_array(), "real failure dump should include selector trace array");
+    expect((*parsedJson)["probeTrace"].is_array() && (*parsedJson)["probeTrace"].empty(), "real failure parse failure should not include probe trace entries");
+}
+
+void testDebugDumpParsedNoMatchFixture() {
+    const hypreact::style::StyleNodeContext node {
+        .type = LayoutNodeType::Window,
+        .id = "win-1",
+        .classes = {"main"},
+    };
+
+    const auto stylesheet = hypreact::test::readFixture("libcss-geometry-nomatch.css");
+    const auto parsed = hypreact::style::parseStylesheetDetailed(stylesheet);
+    const auto fallback = hypreact::style::computeStyle(parsed.stylesheet, node);
+    const auto selector = hypreact::style::libcssMatchSelector("group.main", node);
+    const auto probe = hypreact::style::probeLibcssSelection(stylesheet, node);
+    const auto json = hypreact::style::formatSelectorDebugDumpJson(selector, probe, fallback, parsed.stylesheet.rules.size());
+    const auto parsedJson = hypreact::test::parseJson(json);
+
+    expect(parsedJson.has_value(), "parsed no-match dump should parse as JSON");
+    expect(parsed.stylesheet.rules.size() == 1, "parsed no-match fixture should still parse a rule");
+    expect(!selector.matched, "parsed no-match selector should not match");
+    expect(!fallback.height.has_value(), "parsed no-match fallback should not apply height");
+    expect(!fallback.right.has_value(), "parsed no-match fallback should not apply right");
+    expect((*parsedJson)["probeParsed"].is_boolean(), "parsed no-match dump should expose probeParsed state");
+    expect((*parsedJson)["probeSelected"].is_boolean(), "parsed no-match dump should expose probeSelected state");
+    expect((*parsedJson)["probeAuthoredMatch"].is_boolean(), "parsed no-match dump should expose probeAuthoredMatch state");
+    expect((*parsedJson)["probeTrace"].is_array(), "parsed no-match dump should include probe trace array");
+    expect((*parsedJson)["diagnostics"].is_array() && !(*parsedJson)["diagnostics"].empty(), "parsed no-match dump should include selector diagnostics");
+    expect((*parsedJson)["probeDiagnostics"].is_array(), "parsed no-match dump should include probe diagnostics array");
+    expect((*parsedJson)["probeWarnings"].is_array(), "parsed no-match dump should include probe warnings array");
 }
 
 } // namespace
@@ -690,9 +1046,20 @@ int main() {
     testLibcssCrossCheckPseudostateFixture();
     testLibcssCrossCheckPercentFixture();
     testLibcssSelectorAdapter();
+    testLibcssSelectorAdapterDiagnostics();
     testFallbackAutoAndLonghandPrecedenceFixtures();
     testFallbackMaxMinInsetFixture();
     testLibcssGeometryFixture();
+    testLibcssGeometryNoMatchFixture();
+    testDebugDumpJsonFormat();
+    testDebugDumpGoldenFixture();
+    testDebugDumpGoldenRichFixture();
+    testDebugDumpGoldenNoMatchFixture();
+    testDebugDumpGoldenTracedFixture();
+    testDebugDumpGoldenDiagnosticsFixture();
+    testDebugDumpGoldenNumericProbeFixture();
+    testDebugDumpRealFailureFixture();
+    testDebugDumpParsedNoMatchFixture();
     std::cout << "hypreact_style_tests: ok\n";
     return 0;
 }

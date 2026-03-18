@@ -15,6 +15,8 @@ struct LibcssBridgeStatus {
 struct LibcssSelectionProbe {
     bool parsed = false;
     bool selected = false;
+    bool authoredMatch = false;
+    std::vector<std::string> diagnostics;
     std::optional<std::string> display;
     std::optional<std::string> position;
     std::optional<std::string> overflow;
@@ -31,6 +33,7 @@ struct LibcssSelectionProbe {
     std::optional<float> top;
     std::optional<float> right;
     std::optional<float> bottom;
+    std::vector<std::string> trace;
     std::vector<std::string> warnings;
 };
 

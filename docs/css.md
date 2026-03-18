@@ -31,6 +31,20 @@ The probe-side node adapter is now split into a reusable libcss selector adapter
 
 There is now also a small production-facing selector utility around that adapter for direct selector-match checks against `StyleNodeContext`, including a structured diagnostic result used in tests while the full production selection path is still in transition.
 
+Plugin-side selector diagnostic notifications can now be gated with `plugin:hypreact:debug_selector_diagnostics = 1`.
+
+Plugin-side selector dumps comparing selector-match state and probe output can be enabled with `plugin:hypreact:debug_selector_dump = 1`.
+
+When enabled, the current dump includes match state plus a compact subset of probe fields such as `display`, `position`, `width`, `maxWidth`, `left`, and `right`.
+
+If `plugin:hypreact:debug_selector_dump_path` is set, the plugin also appends the dump plus selector/probe trace lines to that file.
+
+The file dump now uses JSON lines and includes selector-match state, probe state, selector/probe traces, and a richer fallback snapshot including parsed rule count plus computed fallback fields such as width/height, max constraints, and inset values.
+
+The test suite now validates key JSON dump fields, arrays, nested fallback fields, and matching/non-matching/traced golden dump fixtures, including a richer populated success fixture, to keep the debug record shape stable while the dump grows.
+
+There is also a small `hypreact_debug_dump_preview` test utility target that emits one formatted dump record for quick manual inspection.
+
 The probe overlap surface now also includes `max-width`, `min-height`, `left`, `top`, `height`, `max-height`, `right`, and `bottom` for fixture-driven comparisons where the current adapter can resolve them.
 
 Currently implemented pseudoclasses are `:focused`, `:focused-within`, `:fullscreen`, `:floating`, `:urgent`, and `:special-workspace` where the runtime style context carries the needed state.

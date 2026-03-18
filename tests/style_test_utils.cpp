@@ -46,4 +46,12 @@ std::string readFixture(const std::string& relativePath) {
     return buffer.str();
 }
 
+std::optional<nlohmann::json> parseJson(const std::string& json) {
+    try {
+        return nlohmann::json::parse(json);
+    } catch (const nlohmann::json::parse_error&) {
+        return std::nullopt;
+    }
+}
+
 } // namespace hypreact::test

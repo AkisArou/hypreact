@@ -22,6 +22,7 @@ struct LibcssSelectorMatchResult {
     bool parsed = false;
     bool matched = false;
     std::vector<std::string> diagnostics;
+    std::vector<std::string> trace;
 };
 
 std::vector<LibcssAdapterNode> buildLibcssAdapterChain(const StyleNodeContext& node);

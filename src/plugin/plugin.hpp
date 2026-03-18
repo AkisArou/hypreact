@@ -33,6 +33,9 @@ class Plugin {
     std::unique_ptr<runtime::QuickJsRuntime> runtime_;
     std::unordered_map<std::string, std::string> workspaceLayouts_;
     std::unordered_map<std::string, std::string> monitorLayouts_;
+    bool debugSelectorDiagnostics_ = false;
+    bool debugSelectorDump_ = false;
+    std::string debugDumpPath_;
 
     [[nodiscard]] static std::string detectConfigRoot(HANDLE handle);
     [[nodiscard]] static std::string detectCacheRoot(HANDLE handle);

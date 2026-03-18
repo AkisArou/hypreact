@@ -10,7 +10,9 @@
 #include "layout/resolver.hpp"
 #include "runtime_snapshot.hpp"
 #include "runtime/quickjs_runtime.hpp"
+#include "style/debug_dump.hpp"
 #include "style/libcss_bridge.hpp"
+#include "style/libcss_selector_adapter.hpp"
 
 #include <fstream>
 #include <sstream>
@@ -35,6 +37,20 @@ const char* stringConfigValueOrNull(HANDLE handle, const std::string& name) {
 
 void registerConfigValue(HANDLE handle, const char* name, const Hyprlang::CConfigValue& value) {
     HyprlandAPI::addConfigValue(handle, std::string("plugin:hypreact:") + name, value);
+}
+
+bool intConfigValue(HANDLE handle, const std::string& name) {
+    auto* value = HyprlandAPI::getConfigValue(handle, name);
+    if (value == nullptr) {
+        return false;
+    }
+
+    const void* const* staticPtr = value->getDataStaticPtr();
+    if (staticPtr == nullptr || *staticPtr == nullptr) {
+        return false;
+    }
+
+    return *reinterpret_cast<const Hyprlang::INT* const*>(staticPtr) != 0;
 }
 
 Hyprlang::CParseResult parseLayoutAssignment(const char* value, std::string& key, std::string& layout) {
@@ -205,11 +221,19 @@ PluginDescription Plugin::init(HANDLE handle) {
     registerConfigValue(handle, "cache_path", Hyprlang::CConfigValue(Hyprlang::STRING("")));
     registerConfigValue(handle, "layout", Hyprlang::CConfigValue(Hyprlang::STRING("first")));
     registerConfigValue(handle, "default_layout", Hyprlang::CConfigValue(Hyprlang::STRING("first")));
+    registerConfigValue(handle, "debug_selector_diagnostics", Hyprlang::CConfigValue(Hyprlang::INT(0)));
+    registerConfigValue(handle, "debug_selector_dump", Hyprlang::CConfigValue(Hyprlang::INT(0)));
+    registerConfigValue(handle, "debug_selector_dump_path", Hyprlang::CConfigValue(Hyprlang::STRING("")));
     HyprlandAPI::addConfigKeyword(handle, "plugin:hypreact:workspace_layout", &Plugin::onWorkspaceLayoutKeyword, Hyprlang::SHandlerOptions {});
     HyprlandAPI::addConfigKeyword(handle, "plugin:hypreact:monitor_layout", &Plugin::onMonitorLayoutKeyword, Hyprlang::SHandlerOptions {});
 
     const std::string configRoot = detectConfigRoot(handle);
     const std::string cacheRoot = detectCacheRoot(handle);
+    this->debugSelectorDiagnostics_ = intConfigValue(handle, "plugin:hypreact:debug_selector_diagnostics");
+    Plugin::instance().debugSelectorDump_ = intConfigValue(handle, "plugin:hypreact:debug_selector_dump");
+    this->debugDumpPath_ = stringConfigValueOrNull(handle, "plugin:hypreact:debug_selector_dump_path") != nullptr
+        ? stringConfigValueOrNull(handle, "plugin:hypreact:debug_selector_dump_path")
+        : std::string {};
     const auto snapshot = RuntimeSnapshotProvider::current();
     std::string selectedLayout = detectSelectedLayout(handle);
 
@@ -330,13 +354,64 @@ PluginDescription Plugin::init(HANDLE handle) {
                 .specialWorkspace = resolved.root.specialWorkspace,
             };
             const auto selectorDebug = hypreact::style::libcssMatchSelector(hypreact::domain::toString(resolved.root.type), debugSelectorContext);
-            if (!selectorDebug.matched && !selectorDebug.diagnostics.empty()) {
+            if (this->debugSelectorDiagnostics_ && !selectorDebug.matched && !selectorDebug.diagnostics.empty()) {
                 HyprlandAPI::addNotification(
                     handle,
                     "[hypreact] selector diagnostic: " + selectorDebug.diagnostics.front(),
                     CHyprColor {0.9, 0.7, 0.2, 1.0},
                     3000
                 );
+            }
+
+            if (Plugin::instance().debugSelectorDump_) {
+                const auto probe = hypreact::style::probeLibcssSelection(cssBuffer.str(), debugSelectorContext);
+                const auto fallbackStyle = hypreact::style::computeStyle(parsedStylesheet.stylesheet, debugSelectorContext);
+                const std::string authoredStatus = !probe.parsed ? "probe-parse-failed"
+                    : !probe.selected ? "probe-select-failed"
+                    : probe.authoredMatch ? "authored-match"
+                    : "baseline-only";
+                const std::string dump = "[hypreact] selector dump matched=" + std::string(selectorDebug.matched ? "true" : "false")
+                    + " parsed=" + std::string(probe.parsed ? "true" : "false")
+                    + " computed=" + std::string(probe.selected ? "true" : "false")
+                    + " authoredMatch=" + std::string(probe.authoredMatch ? "true" : "false")
+                    + " authoredStatus=" + authoredStatus
+                    + " display=" + probe.display.value_or("-")
+                    + " position=" + probe.position.value_or("-")
+                    + " width=" + (probe.width.has_value() ? std::to_string(*probe.width) : std::string("-"))
+                    + " maxWidth=" + (probe.maxWidth.has_value() ? std::to_string(*probe.maxWidth) : std::string("-"))
+                    + " left=" + (probe.left.has_value() ? std::to_string(*probe.left) : std::string("-"))
+                    + " right=" + (probe.right.has_value() ? std::to_string(*probe.right) : std::string("-"))
+                    + " probeWarnings=" + (probe.warnings.empty() ? std::string("0") : std::to_string(probe.warnings.size()));
+                HyprlandAPI::addNotification(handle, dump, CHyprColor {0.7, 0.9, 0.9, 1.0}, 3000);
+
+                if (!probe.warnings.empty()) {
+                    HyprlandAPI::addNotification(
+                        handle,
+                        "[hypreact] selector probe warning: " + probe.warnings.front(),
+                        CHyprColor {1.0, 0.8, 0.2, 1.0},
+                        3000
+                    );
+                }
+
+                if (!probe.diagnostics.empty()) {
+                    HyprlandAPI::addNotification(
+                        handle,
+                        "[hypreact] selector probe diagnostic: " + probe.diagnostics.front(),
+                        CHyprColor {1.0, 0.7, 0.2, 1.0},
+                        3000
+                    );
+                }
+
+                if (!this->debugDumpPath_.empty()) {
+                    if (std::ofstream debugDump(this->debugDumpPath_, std::ios::app); debugDump.is_open()) {
+                        debugDump << hypreact::style::formatSelectorDebugDumpJson(
+                            selectorDebug,
+                            probe,
+                            fallbackStyle,
+                            parsedStylesheet.stylesheet.rules.size()
+                        ) << "\n";
+                    }
+                }
             }
 
             const auto geometry = hypreact::layout::LayoutEngine::compute(resolved, snapshot, parsedStylesheet.stylesheet);

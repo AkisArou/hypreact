@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstddef>
+#include <nlohmann/json.hpp>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -16,5 +18,9 @@ style::StyleNodeContext styleContextFromResolvedPath(
 );
 
 std::string readFixture(const std::string& relativePath);
+
+using Json = nlohmann::json;
+
+std::optional<Json> parseJson(const std::string& json);
 
 } // namespace hypreact::test

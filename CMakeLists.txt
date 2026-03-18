@@ -78,6 +78,7 @@ pkg_check_modules(HYPRLAND REQUIRED hyprland)
 pkg_check_modules(PIXMAN REQUIRED pixman-1)
 
 add_library(hypreact_libcss_bridge STATIC
+  src/style/debug_dump.cpp
   src/style/libcss_selector_adapter.cpp
   src/style/libcss_probe.cpp
   src/style/libcss_bridge.cpp
@@ -160,6 +161,14 @@ endif()
 include(CTest)
 
 if(BUILD_TESTING)
+  include(FetchContent)
+
+  FetchContent_Declare(
+    nlohmann_json
+    URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+  )
+  FetchContent_MakeAvailable(nlohmann_json)
+
   add_executable(hypreact_style_tests
     tests/style_tests.cpp
     tests/style_test_utils.cpp
@@ -170,10 +179,22 @@ if(BUILD_TESTING)
   target_link_libraries(hypreact_style_tests PRIVATE
     hypreact_style
     hypreact_libcss_bridge
+    nlohmann_json::nlohmann_json
   )
   target_sources(hypreact_style_tests PRIVATE src/domain/layout_node.cpp src/layout/resolver.cpp)
 
   add_test(NAME hypreact_style_tests COMMAND hypreact_style_tests)
+
+  add_executable(hypreact_debug_dump_preview
+    tests/debug_dump_preview.cpp
+  )
+
+  target_include_directories(hypreact_debug_dump_preview PRIVATE src)
+  target_compile_options(hypreact_debug_dump_preview PRIVATE ${HYPREACT_WARNING_FLAGS})
+  target_link_libraries(hypreact_debug_dump_preview PRIVATE
+    hypreact_style
+    hypreact_libcss_bridge
+  )
 endif()
 
 set_target_properties(hypreact PROPERTIES
